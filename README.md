@@ -2,6 +2,68 @@
 
 Fichier unique `xhprof-viewer.html` (1359 lignes), autonome : pas de build, pas de dépendance, pas de réseau. On l'ouvre dans un navigateur, on y dépose un profil, tout est traité localement.
 
+## 0. En un coup d'œil
+
+Ouvrir `xhprof-viewer.html` dans un navigateur, y déposer un profil, et lire le résultat. Le bouton
+*Load demo profile* charge un profil synthétique intégré — c'est lui qui a servi à produire les
+captures ci-dessous, elles sont donc reproductibles à l'identique (voir `docs/screenshots.js`).
+
+### Charger un profil
+
+Drag & drop n'importe où sur la page, *Choose a file…*, collage de contenu brut, ou le profil de démo.
+
+![Zone de dépôt](docs/img/01-drop.png)
+
+### Flat profile — où passe le temps
+
+La table triable de toutes les fonctions : appels, inclusif, exclusif, et leurs parts du run. On trie
+par **Excl** pour trouver les vrais points chauds, on clique une ligne pour ouvrir son détail.
+
+![Flat profile](docs/img/02-flat.png)
+
+### Call tree — quel chemin y mène
+
+L'arbre agrégé depuis la racine, chaque arête pondérée par la part de son appelant. La récursion est
+coupée à la première répétition dans la pile et marquée `↻ (recursive)`.
+
+![Call tree](docs/img/03-tree.png)
+
+### Flame graph — la même chose en surfaces
+
+Largeur = part de la racine, profondeur = pile d'appels. Clic pour zoomer, `Alt`/`Cmd`/`Ctrl`+clic
+pour ouvrir le détail. Vue désactivée sur les métriques mémoire (deltas potentiellement négatifs).
+
+![Flame graph](docs/img/04-flame.png)
+
+### Insights — ce que le profil raconte
+
+Résumé du run, points bloquants classés par sévérité avec la raison de leur présence, et suggestions
+à base de motifs de noms avec correctif concret. Les puces sont cliquables vers les fonctions visées.
+
+![Insights](docs/img/05-insights.png)
+
+### Panneau de détail — naviguer le graphe
+
+Toutes les métriques d'une fonction (inclusif / exclusif / par appel, et leur part du run), ses
+appelants et ses appelés. Les lignes sont cliquables : le panneau sert de navigateur d'arêtes.
+`Esc` ferme.
+
+![Panneau de détail](docs/img/06-detail.png)
+
+### Info — provenance et mode de lecture
+
+Fichier, format détecté, métriques, racines, totaux, métadonnées brutes du profil, et un rappel de
+ce que signifient inclusif et exclusif.
+
+![Onglet Info](docs/img/07-info.png)
+
+### Filtre, métrique, thème, export
+
+Le filtre accepte une regex (repli sur sous-chaîne si elle ne compile pas) et alimente aussi
+l'export CSV. La métrique active redessine toutes les vues. Le thème clair est persisté.
+
+![Thème clair avec filtre](docs/img/08-light-filter.png)
+
 ## 1. Entrée
 
 **Formats acceptés** (détectés par sniffing, avec repli sur essais successifs) :
