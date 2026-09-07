@@ -1,0 +1,1358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XHProf Viewer</title>
+<style>
+:root{
+  --bg:#0f1115; --bg2:#151922; --bg3:#1c2130; --line:#262d3d;
+  --fg:#e6e9ef; --fg2:#9aa4b8; --fg3:#6b7488;
+  --accent:#5aa9ff; --warn:#ffb454; --bad:#ff6b6b;
+  --bar:#2b4a72; --bar2:#3a6ea5;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+html[data-theme="light"]{
+  --bg:#f7f8fa; --bg2:#fff; --bg3:#eef1f6; --line:#dde2ea;
+  --fg:#161a22; --fg2:#5a6377; --fg3:#8b93a5;
+  --accent:#0b6bcb; --bar:#cfe0f5; --bar2:#9dc2ea;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--sans);display:flex;flex-direction:column}
+button,select,input,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+header h1 span{color:var(--accent)}
+.spacer{flex:1}
+.btn{background:var(--bg3);border:1px solid var(--line);border-radius:7px;padding:6px 11px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.file-name{font-family:var(--mono);font-size:12px;color:var(--fg2);max-width:38ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+select{background:var(--bg3);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+input[type=search]{background:var(--bg3);border:1px solid var(--line);border-radius:7px;padding:6px 10px;min-width:220px}
+
+#drop{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+#drop .card{border:2px dashed var(--line);border-radius:16px;padding:44px 52px;text-align:center;max-width:760px;background:var(--bg2)}
+#drop.hot .card{border-color:var(--accent);background:var(--bg3)}
+#drop h2{margin:0 0 6px;font-size:20px}
+#drop p{color:var(--fg2);margin:6px 0}
+#drop code{font-family:var(--mono);background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px}
+.dz-actions{margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+textarea{width:100%;min-height:110px;margin-top:16px;background:var(--bg);border:1px solid var(--line);border-radius:8px;font-family:var(--mono);font-size:12px;padding:8px;display:none}
+
+#app{flex:1;display:none;flex-direction:column;min-height:0}
+.summary{display:flex;gap:10px;padding:12px 16px;flex-wrap:wrap;background:var(--bg2);border-bottom:1px solid var(--line)}
+.kpi{background:var(--bg3);border:1px solid var(--line);border-radius:9px;padding:8px 12px;min-width:118px}
+.kpi .k{font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.6px}
+.kpi .v{font-size:17px;font-family:var(--mono);margin-top:2px}
+
+.tabs{display:flex;gap:2px;padding:8px 16px 0;background:var(--bg2)}
+.tab{background:none;border:1px solid transparent;border-bottom:none;padding:7px 14px;border-radius:8px 8px 0 0;cursor:pointer;color:var(--fg2)}
+.tab.on{background:var(--bg);border-color:var(--line);color:var(--fg);font-weight:600}
+.toolbar{display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg);flex-wrap:wrap}
+.hint{color:var(--fg3);font-size:12px}
+.views{flex:1;min-height:0;overflow:auto}
+.view{display:none;padding:0 0 40px}
+.view.on{display:block}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{position:sticky;top:0;background:var(--bg2);border-bottom:1px solid var(--line);text-align:right;padding:8px 10px;white-space:nowrap;cursor:pointer;user-select:none;font-weight:600;z-index:2}
+thead th:first-child{text-align:left}
+thead th:hover{color:var(--accent)}
+thead th .ar{color:var(--accent);font-size:10px}
+tbody td{border-bottom:1px solid var(--line);padding:5px 10px;text-align:right;font-family:var(--mono);font-size:12px;white-space:nowrap}
+tbody td:first-child{text-align:left;max-width:52ch;overflow:hidden;text-overflow:ellipsis}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--bg2)}
+.pct{color:var(--fg2)}
+.barcell{width:120px}
+.bar{height:9px;background:var(--bar);border-radius:3px;position:relative;overflow:hidden;display:block}
+.bar>i{position:absolute;top:0;bottom:0;left:0;background:var(--bar2);display:block}
+.more{padding:14px 16px;text-align:center}
+
+#tree{padding:8px 16px;font-family:var(--mono);font-size:12.5px}
+.tn{display:flex;align-items:center;gap:8px;padding:2px 0}
+.tn:hover{background:var(--bg2)}
+.tw{width:82px;text-align:right}
+.tp{width:58px;text-align:right;color:var(--fg2)}
+.tc{width:62px;text-align:right;color:var(--fg3)}
+.tg{width:90px}
+.tk{background:none;border:none;cursor:pointer;color:var(--accent);width:16px;text-align:left;padding:0}
+.tn .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;cursor:pointer}
+.tn.rec .nm{color:var(--warn)}
+.tkids{margin-left:16px;border-left:1px dotted var(--line);padding-left:6px}
+
+#flamewrap{padding:12px 16px}
+#flame{position:relative;font-family:var(--mono);font-size:11px;user-select:none}
+.fr{position:absolute;height:17px;border-radius:2px;overflow:hidden;white-space:nowrap;padding:0 4px;line-height:17px;cursor:pointer;color:#10131a;border:1px solid rgba(0,0,0,.25)}
+.fr:hover{filter:brightness(1.18);outline:1px solid var(--fg)}
+.crumb{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-family:var(--mono);font-size:12px}
+.crumb button{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:2px 8px;cursor:pointer}
+
+#panel{position:fixed;top:0;right:0;bottom:0;width:min(780px,94vw);background:var(--bg2);border-left:1px solid var(--line);box-shadow:-16px 0 40px rgba(0,0,0,.35);transform:translateX(102%);transition:transform .18s ease;display:flex;flex-direction:column;z-index:20}
+#panel.on{transform:none}
+#panel .ph{display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--line)}
+#panel .ph h3{margin:0;font-size:14px;font-family:var(--mono);word-break:break-all;flex:1}
+#panel .pb{overflow:auto;padding:0 0 30px}
+#panel h4{margin:18px 16px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--fg2)}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:12px 16px 4px}
+.mgrid div{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.mgrid .k{font-size:11px;color:var(--fg2)}
+.mgrid .v{font-family:var(--mono);font-size:14px}
+.empty{padding:8px 16px;color:var(--fg3);font-size:12px}
+#raw{padding:12px 16px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;color:var(--fg2)}
+.err{margin:16px 0 0;padding:12px 14px;border:1px solid var(--bad);border-radius:8px;background:rgba(255,107,107,.08);color:var(--fg);font-family:var(--mono);font-size:12px;white-space:pre-wrap;text-align:left}
+.ins{padding:16px;max-width:1040px}
+.ins h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--fg2);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+.ins h3:first-child{margin-top:4px}
+.ins h3 .n{background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:0 7px;font-size:11px;letter-spacing:0;color:var(--fg2)}
+.ins .desc{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:4px 14px}
+.ins .desc p{margin:10px 0}
+.ins .desc code,.ins .card code{font-family:var(--mono);font-size:12px;background:var(--bg3);padding:1px 5px;border-radius:4px}
+.ins .card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--fg3);border-radius:10px;padding:10px 14px;margin-bottom:10px}
+.ins .card.hi{border-left-color:var(--bad)}
+.ins .card.med{border-left-color:var(--warn)}
+.ins .card.low{border-left-color:var(--accent)}
+.ins .card .ct{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ins .card .sev{font-size:10px;text-transform:uppercase;letter-spacing:.7px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);color:var(--fg2);background:var(--bg3)}
+.ins .card.hi .sev{color:var(--bad);border-color:var(--bad)}
+.ins .card.med .sev{color:var(--warn);border-color:var(--warn)}
+.ins .card.low .sev{color:var(--accent);border-color:var(--accent)}
+.ins .card .ti{font-weight:600}
+.ins .card .fn{background:none;border:none;padding:0;cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:12.5px;text-align:left}
+.ins .card .fn:hover{text-decoration:underline}
+.ins .card .ev{font-family:var(--mono);font-size:11.5px;color:var(--fg2);margin-top:6px}
+.ins .card ul{margin:8px 0 2px;padding-left:20px}
+.ins .card li{margin:4px 0}
+.ins .card p{margin:8px 0 0;color:var(--fg)}
+.ins .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.ins .chip{background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:2px 9px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--fg2);max-width:44ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ins .chip:hover{border-color:var(--accent);color:var(--accent)}
+.ins .foot{color:var(--fg3);font-size:12px;margin-top:22px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>XHProf <span>Viewer</span></h1>
+  <span class="file-name" id="fileName"></span>
+  <span class="spacer"></span>
+  <button class="btn" id="openBtn">Open file</button>
+  <input type="file" id="fileInput" hidden>
+  <button class="btn" id="themeBtn" title="Toggle theme">&#9686;</button>
+</header>
+
+<div id="drop">
+  <div class="card">
+    <h2>Drop an XHProf profile here</h2>
+    <p>Everything runs locally in this file &mdash; nothing is uploaded anywhere.</p>
+    <p class="hint">Supported: PHP <code>serialize()</code> (<code>*.xhprof</code>), JSON (including XHGui documents),
+       <code>&lt;?php return array(...)</code>, and <code>.gz</code> of any of those.</p>
+    <div class="dz-actions">
+      <button class="btn primary" id="pickBtn">Choose a file&hellip;</button>
+      <button class="btn" id="pasteBtn">Paste raw data</button>
+      <button class="btn" id="demoBtn">Load demo profile</button>
+    </div>
+    <textarea id="pasteArea" placeholder="Paste the raw profile content, then press Ctrl/Cmd+Enter"></textarea>
+    <div id="dropErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="summary" id="summary"></div>
+
+  <div class="tabs">
+    <button class="tab on" data-view="flat">Flat profile</button>
+    <button class="tab" data-view="tree">Call tree</button>
+    <button class="tab" data-view="flame">Flame graph</button>
+    <button class="tab" data-view="insight">Insights</button>
+    <button class="tab" data-view="info">Info</button>
+  </div>
+
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Filter functions&hellip; (regex ok)">
+    <label class="hint">Metric <select id="metric"></select></label>
+    <label class="hint" id="rootWrap">Root <select id="root"></select></label>
+    <span class="spacer"></span>
+    <span class="hint" id="counts"></span>
+    <button class="btn" id="csvBtn">Export CSV</button>
+  </div>
+
+  <div class="views">
+    <div class="view on" id="view-flat">
+      <table id="flat"><thead></thead><tbody></tbody></table>
+      <div class="more" id="more"></div>
+    </div>
+    <div class="view" id="view-tree"><div id="tree"></div></div>
+    <div class="view" id="view-flame"><div id="flamewrap"><div class="crumb" id="crumb"></div><div id="flame"></div></div></div>
+    <div class="view" id="view-insight"><div id="insight"></div></div>
+      <div class="view" id="view-info"><div id="raw"></div></div>
+  </div>
+</div>
+
+<div id="panel">
+  <div class="ph">
+    <h3 id="pTitle"></h3>
+    <button class="btn" id="pClose">&#10005;</button>
+  </div>
+  <div class="pb" id="pBody"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ================================================================== *
+ * 1. Parsers: PHP serialize(), PHP array literal, JSON, gzip
+ * ================================================================== */
+
+function phpUnserialize(str){
+  var i = 0;
+  function fail(m){ throw new Error("unserialize: " + m + " at offset " + i); }
+  function eat(ch){ if (str[i] !== ch) fail('expected "' + ch + '" but got "' + (str[i] || "EOF") + '"'); i++; }
+  function upto(ch){
+    var j = str.indexOf(ch, i);
+    if (j < 0) fail("unterminated token");
+    var s = str.slice(i, j); i = j + 1; return s;
+  }
+  /* serialize() string lengths are BYTE counts: walk code points, count UTF-8 bytes. */
+  function readBytes(len){
+    var start = i, bytes = 0;
+    while (bytes < len && i < str.length){
+      var cp = str.codePointAt(i);
+      bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+      i += cp > 0xFFFF ? 2 : 1;
+    }
+    return str.slice(start, i);
+  }
+  function value(){
+    switch (str[i]){
+      case "N": i += 2; return null;
+      case "b": i += 2; return upto(";") === "1";
+      case "i": i += 2; return parseInt(upto(";"), 10);
+      case "d": {
+        i += 2;
+        var v = upto(";");
+        if (v === "NAN") return NaN;
+        if (v === "INF") return Infinity;
+        if (v === "-INF") return -Infinity;
+        return parseFloat(v);
+      }
+      case "s": {
+        i += 2;
+        var n = parseInt(upto(":"), 10);
+        eat('"'); var s = readBytes(n); eat('"'); eat(";");
+        return s;
+      }
+      case "a": {
+        i += 2;
+        var cnt = parseInt(upto(":"), 10);
+        eat("{");
+        var out = {};
+        for (var k = 0; k < cnt; k++){ var key = value(); out[key] = value(); }
+        eat("}");
+        return out;
+      }
+      case "O": { /* objects -> plain maps of their properties */
+        i += 2;
+        var nl = parseInt(upto(":"), 10);
+        eat('"'); readBytes(nl); eat('"'); eat(":");
+        var pc = parseInt(upto(":"), 10);
+        eat("{");
+        var obj = {};
+        for (var p = 0; p < pc; p++){
+          var pk = String(value());
+          pk = pk.replace(/^ [^ ]* /, ""); /* strip private/protected mangling */
+          obj[pk] = value();
+        }
+        eat("}");
+        return obj;
+      }
+      default: fail('unknown type "' + (str[i] || "EOF") + '"');
+    }
+  }
+  return value();
+}
+
+/* Tolerant parser for `<?php return array('a' => array('ct' => 1), ...);` */
+function phpLiteralParse(src){
+  var s = String(src).replace(/^\uFEFF/, "").trim();
+  s = s.replace(/^<\?php\s*/i, "").replace(/^return\s+/i, "").replace(/;?\s*(\?>)?\s*$/, "");
+  var i = 0;
+  function fail(m){ throw new Error("php literal: " + m + " at offset " + i); }
+  function ws(){ while (i < s.length && /[\s,]/.test(s[i])) i++; }
+  function readString(){
+    var q = s[i++], out = "";
+    while (i < s.length){
+      var c = s[i];
+      if (c === "\\"){
+        var n = s[i + 1];
+        if (q === "'"){ out += (n === "'" || n === "\\") ? n : "\\" + n; i += 2; continue; }
+        i += 2;
+        out += n === "n" ? "\n" : n === "t" ? "\t" : n === "r" ? "\r" : n;
+        continue;
+      }
+      if (c === q){ i++; return out; }
+      out += c; i++;
+    }
+    fail("unterminated string");
+  }
+  function arr(close){
+    var out = {}, auto = 0;
+    for (;;){
+      ws();
+      if (s[i] === close){ i++; return out; }
+      if (i >= s.length) fail("unterminated array");
+      var first = value();
+      ws();
+      if (s[i] === "=" && s[i + 1] === ">"){ i += 2; out[first] = value(); }
+      else out[auto++] = first;
+    }
+  }
+  function value(){
+    ws();
+    var c = s[i];
+    if (c === "'" || c === '"') return readString();
+    if (c === "["){ i++; return arr("]"); }
+    if (/^array\s*\(/i.test(s.slice(i, i + 12))){ i = s.indexOf("(", i) + 1; return arr(")"); }
+    var m = /^(-?\d+\.?\d*(?:[eE][-+]?\d+)?|true|false|null)/i.exec(s.slice(i));
+    if (!m) fail('unexpected "' + (c || "EOF") + '"');
+    i += m[0].length;
+    var t = m[0].toLowerCase();
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (t === "null") return null;
+    return parseFloat(m[0]);
+  }
+  return value();
+}
+
+async function maybeGunzip(buf){
+  var u8 = new Uint8Array(buf);
+  if (u8.length > 2 && u8[0] === 0x1f && u8[1] === 0x8b){
+    if (typeof DecompressionStream !== "function") throw new Error("This looks like a gzip file, but this browser has no DecompressionStream.");
+    var stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(stream).arrayBuffer();
+  }
+  return buf;
+}
+
+function parseProfileText(text){
+  var t = String(text).replace(/^\uFEFF/, "").trim();
+  if (!t) throw new Error("Empty input.");
+  if (/^[aOsibdN]:/.test(t)) return { data: phpUnserialize(t), format: "PHP serialize()" };
+  if (t[0] === "{" || t[0] === "[") {
+    try { return { data: JSON.parse(t), format: "JSON" }; } catch (e){ /* maybe a PHP short-array literal */ }
+  }
+  if (/^(<\?php|return|array\s*\(|\[)/i.test(t)) return { data: phpLiteralParse(t), format: "PHP array literal" };
+  var tries = [[phpUnserialize, "PHP serialize()"], [JSON.parse, "JSON"], [phpLiteralParse, "PHP array literal"]];
+  for (var k = 0; k < tries.length; k++){
+    try { return { data: tries[k][0](t), format: tries[k][1] }; } catch (e){ /* next */ }
+  }
+  throw new Error("Unrecognised format: expected PHP serialize(), JSON or a PHP array literal.");
+}
+
+/* Locate the actual edge map inside whatever wrapper we were handed. */
+function extractProfile(data){
+  function looksLikeProfile(o){
+    if (!o || typeof o !== "object") return false;
+    var keys = Object.keys(o);
+    if (!keys.length) return false;
+    for (var n = 0; n < Math.min(keys.length, 80); n++){
+      var k = keys[n], v = o[k];
+      if (k.indexOf("==>") >= 0 || k === "main()") return true;
+      if (v && typeof v === "object" && ("wt" in v || "ct" in v || "cpu" in v || "samples" in v)) return true;
+    }
+    return false;
+  }
+  if (looksLikeProfile(data)) return { profile: data, meta: null };
+
+  var wrappers = ["profile", "profiles", "prof", "data", "0"];
+  for (var w = 0; w < wrappers.length; w++){
+    var key = wrappers[w];
+    if (data && typeof data === "object" && looksLikeProfile(data[key])){
+      var meta = {};
+      Object.keys(data).forEach(function(k){ if (k !== key) meta[k] = data[k]; });
+      return { profile: data[key], meta: Object.keys(meta).length ? meta : null };
+    }
+  }
+  if (data && typeof data === "object"){
+    var ks = Object.keys(data);
+    for (var j = 0; j < ks.length; j++){
+      var v = data[ks[j]];
+      if (v && typeof v === "object"){
+        if (looksLikeProfile(v)) return { profile: v, meta: { wrapper: ks[j] } };
+        if (looksLikeProfile(v.profile)) return { profile: v.profile, meta: v.meta || { wrapper: ks[j] } };
+      }
+    }
+  }
+  throw new Error('No XHProf data found (expected entries keyed like "parent==>child").');
+}
+
+/* ================================================================== *
+ * 2. Model: aggregate edges into per-function inclusive / exclusive
+ * ================================================================== */
+
+var METRIC_META = {
+  ct:      { label: "Calls",       unit: "count" },
+  wt:      { label: "Wall time",   unit: "us" },
+  cpu:     { label: "CPU time",    unit: "us" },
+  utime:   { label: "User time",   unit: "us" },
+  stime:   { label: "System time", unit: "us" },
+  mu:      { label: "Memory",      unit: "bytes" },
+  pmu:     { label: "Peak memory", unit: "bytes" },
+  samples: { label: "Samples",     unit: "count" }
+};
+var METRIC_ORDER = ["wt", "cpu", "utime", "stime", "mu", "pmu", "samples"];
+
+function buildModel(profile){
+  var found = {}, edges = [];
+  Object.keys(profile).forEach(function(rawKey){
+    var v = profile[rawKey];
+    if (!v || typeof v !== "object") return;
+    var key = String(rawKey);
+    var sep = key.indexOf("==>");
+    var parent = sep >= 0 ? key.slice(0, sep) : null;
+    var child = sep >= 0 ? key.slice(sep + 3) : key;
+    var m = {};
+    Object.keys(v).forEach(function(k){
+      var n = typeof v[k] === "number" ? v[k] : parseFloat(v[k]);
+      if (isFinite(n)){ m[k] = n; if (k !== "ct") found[k] = true; }
+    });
+    edges.push({ key: key, parent: parent, child: child, m: m, ct: m.ct || 0 });
+  });
+  if (!edges.length) throw new Error("Profile contains no usable entries.");
+
+  var names = Object.keys(found);
+  var metricList = METRIC_ORDER.filter(function(m){ return found[m]; })
+    .concat(names.filter(function(m){ return METRIC_ORDER.indexOf(m) < 0; }));
+  if (!metricList.length) metricList = ["ct"];
+
+  var funcs = new Map();
+  function get(name){
+    var f = funcs.get(name);
+    if (!f){
+      f = { name: name, ct: 0, incl: {}, kids: {}, excl: {}, parents: [], children: [] };
+      metricList.forEach(function(m){ f.incl[m] = 0; f.kids[m] = 0; f.excl[m] = 0; });
+      funcs.set(name, f);
+    }
+    return f;
+  }
+
+  edges.forEach(function(e){
+    var c = get(e.child);
+    c.ct += e.ct;
+    metricList.forEach(function(m){ c.incl[m] += e.m[m] || 0; });
+    c.parents.push(e);
+    if (e.parent !== null){
+      var p = get(e.parent);
+      metricList.forEach(function(m){ p.kids[m] += e.m[m] || 0; });
+      p.children.push(e);
+    }
+  });
+  /* A function that never appears as a callee has no inclusive row of its own
+     (some profiles omit the "main()" entry). Its inclusive cost is then at
+     least the sum of its callees, otherwise every total would come out zero. */
+  funcs.forEach(function(f){
+    if (!f.parents.length){
+      metricList.forEach(function(m){ if (!f.incl[m]) f.incl[m] = f.kids[m]; });
+      if (!f.ct) f.ct = 1;
+    }
+    metricList.forEach(function(m){ f.excl[m] = f.incl[m] - f.kids[m]; });
+  });
+
+  /* roots: main() first, then any function that is never called by anybody */
+  var roots = [];
+  if (funcs.has("main()")) roots.push("main()");
+  funcs.forEach(function(f){
+    if (roots.indexOf(f.name) < 0 && f.parents.every(function(e){ return e.parent === null; })) roots.push(f.name);
+  });
+  if (!roots.length){
+    var best = Array.from(funcs.values()).sort(function(a, b){ return (b.incl[metricList[0]] || 0) - (a.incl[metricList[0]] || 0); })[0];
+    roots.push(best.name);
+  }
+
+  var totals = {}, totalCt = 0;
+  metricList.forEach(function(m){
+    var t = roots.reduce(function(s, r){ return s + (funcs.get(r).incl[m] || 0); }, 0);
+    if (!t) funcs.forEach(function(f){ t += f.excl[m] || 0; });
+    totals[m] = t;
+  });
+  funcs.forEach(function(f){ totalCt += f.ct; });
+
+  return { funcs: funcs, edges: edges, metricList: metricList, roots: roots, totals: totals, totalCt: totalCt };
+}
+
+/* ================================================================== *
+ * 3. Formatting helpers
+ * ================================================================== */
+
+function fmtInt(n){ return Math.round(n).toLocaleString("en-US"); }
+function fmtUs(us){
+  var a = Math.abs(us);
+  if (a < 1000) return (Math.round(us * 10) / 10) + " µs";
+  if (a < 1e6) return (us / 1000).toFixed(a < 1e4 ? 2 : 1) + " ms";
+  return (us / 1e6).toFixed(3) + " s";
+}
+function fmtBytes(b){
+  var sign = b < 0 ? "-" : "", a = Math.abs(b);
+  if (a < 1024) return sign + a + " B";
+  if (a < 1048576) return sign + (a / 1024).toFixed(1) + " KB";
+  if (a < 1073741824) return sign + (a / 1048576).toFixed(2) + " MB";
+  return sign + (a / 1073741824).toFixed(2) + " GB";
+}
+function unitOf(m){ return (METRIC_META[m] || {}).unit || "count"; }
+function fmtMetric(v, m){
+  var u = unitOf(m);
+  return u === "us" ? fmtUs(v) : u === "bytes" ? fmtBytes(v) : fmtInt(v);
+}
+function label(m){ return (METRIC_META[m] || {}).label || m; }
+function pct(v, t){ return t ? (100 * v / t) : 0; }
+function fmtPct(v, t){ return pct(v, t).toFixed(2) + "%"; }
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;";
+  });
+}
+function shortName(n){ return n.length > 70 ? n.slice(0, 34) + "…" + n.slice(-34) : n; }
+
+/* ================================================================== *
+ * 4. State + views
+ * ================================================================== */
+
+function $(s){ return document.querySelector(s); }
+
+var M = null;
+var META = { file: "", format: "", meta: null };
+var metric = "wt";
+var sortKey = "excl", sortDir = -1;
+var rowLimit = 250;
+var flameRoot = null, flamePath = [];
+
+function isFlameable(m){ var u = unitOf(m); return u === "us" || u === "count"; }
+
+/* ---------------- loading ---------------- */
+
+async function loadFile(file){
+  if (!file) return;
+  try {
+    var buf = await maybeGunzip(await file.arrayBuffer());
+    load(new TextDecoder("utf-8").decode(buf), file.name);
+  } catch (e){ showError(e); }
+}
+
+function load(text, name){
+  try {
+    var parsed = parseProfileText(text);
+    var found = extractProfile(parsed.data);
+    M = buildModel(found.profile);
+    META = { file: name || "(pasted data)", format: parsed.format, meta: found.meta };
+    metric = M.metricList.indexOf("wt") >= 0 ? "wt" : M.metricList[0];
+    sortKey = "excl"; sortDir = -1; rowLimit = 250;
+    flameRoot = null; flamePath = [];
+    boot();
+  } catch (e){ showError(e); }
+}
+
+function showError(e){
+  $("#dropErr").innerHTML = '<div class="err">' + esc(e && e.message ? e.message : String(e)) + "</div>";
+  $("#drop").style.display = "flex";
+  $("#app").style.display = "none";
+  if (console && console.error) console.error(e);
+}
+
+function boot(){
+  $("#dropErr").innerHTML = "";
+  $("#drop").style.display = "none";
+  $("#app").style.display = "flex";
+  $("#fileName").textContent = META.file;
+
+  $("#metric").innerHTML = M.metricList.map(function(m){
+    return '<option value="' + esc(m) + '">' + esc(label(m)) + "</option>";
+  }).join("");
+  $("#metric").value = metric;
+
+  $("#root").innerHTML = M.roots.map(function(r){
+    return '<option value="' + esc(r) + '">' + esc(shortName(r)) + "</option>";
+  }).join("");
+  $("#rootWrap").style.display = M.roots.length > 1 ? "" : "none";
+
+  renderSummary();
+  renderAll();
+}
+
+function renderAll(){ renderFlat(); renderTree(); renderFlame(); renderInsight(); renderInfo(); }
+
+/* ---------------- summary ---------------- */
+
+function renderSummary(){
+  var kpis = [["Functions", fmtInt(M.funcs.size)], ["Call edges", fmtInt(M.edges.length)], ["Total calls", fmtInt(M.totalCt)]];
+  M.metricList.forEach(function(m){
+    var v = M.totals[m];
+    var name = "Total " + label(m).toLowerCase();
+    if (m === "pmu"){
+      v = 0;
+      M.funcs.forEach(function(f){ v = Math.max(v, f.incl[m] || 0); });
+      name = "Max peak memory";
+    }
+    kpis.push([name, fmtMetric(v, m)]);
+  });
+  $("#summary").innerHTML = kpis.map(function(kv){
+    return '<div class="kpi"><div class="k">' + esc(kv[0]) + '</div><div class="v">' + esc(kv[1]) + "</div></div>";
+  }).join("");
+}
+
+/* ---------------- flat profile ---------------- */
+
+function filteredFuncs(){
+  var q = $("#q").value.trim();
+  var list = Array.from(M.funcs.values());
+  if (q){
+    var re = null;
+    try { re = new RegExp(q, "i"); } catch (e){ re = null; }
+    var lower = q.toLowerCase();
+    list = list.filter(function(f){ return re ? re.test(f.name) : f.name.toLowerCase().indexOf(lower) >= 0; });
+  }
+  function val(f){
+    if (sortKey === "name") return f.name;
+    if (sortKey === "ct") return f.ct;
+    return f[sortKey] ? f[sortKey][metric] : 0;
+  }
+  list.sort(function(a, b){
+    var x = val(a), y = val(b);
+    if (typeof x === "string") return sortDir * x.localeCompare(y);
+    return sortDir * (x - y);
+  });
+  return list;
+}
+
+var COLS = [
+  { k: "name",  t: "Function" },
+  { k: "ct",    t: "Calls" },
+  { k: "ct",    t: "Calls %",  pctOf: "ct" },
+  { k: "incl",  t: "Incl" },
+  { k: "incl",  t: "Incl %",   pctOf: "incl" },
+  { k: "excl",  t: "Excl" },
+  { k: "excl",  t: "Excl %",   pctOf: "excl" },
+  { k: "",      t: "" }
+];
+
+function renderFlat(){
+  $("#flat thead").innerHTML = "<tr>" + COLS.map(function(c){
+    var t = (c.t === "Incl" || c.t === "Excl") ? c.t + " " + label(metric) : c.t;
+    var on = c.k && c.k === sortKey && !c.pctOf; /* arrow on the value column only */
+    return "<th" + (c.k ? ' data-k="' + c.k + '"' : "") + ">" + esc(t)
+      + (on ? ' <span class="ar">' + (sortDir < 0 ? "▼" : "▲") + "</span>" : "") + "</th>";
+  }).join("") + "</tr>";
+
+  var list = filteredFuncs();
+  var total = M.totals[metric] || 1;
+  var shown = list.slice(0, rowLimit);
+  var maxExcl = 1;
+  shown.forEach(function(f){ maxExcl = Math.max(maxExcl, Math.abs(f.excl[metric])); });
+
+  $("#flat tbody").innerHTML = shown.map(function(f){
+    var w = Math.min(100, Math.abs(f.excl[metric]) / maxExcl * 100);
+    return '<tr data-f="' + esc(f.name) + '">'
+      + '<td title="' + esc(f.name) + '">' + esc(shortName(f.name)) + "</td>"
+      + "<td>" + fmtInt(f.ct) + "</td>"
+      + '<td class="pct">' + fmtPct(f.ct, M.totalCt) + "</td>"
+      + "<td>" + esc(fmtMetric(f.incl[metric], metric)) + "</td>"
+      + '<td class="pct">' + fmtPct(f.incl[metric], total) + "</td>"
+      + "<td>" + esc(fmtMetric(f.excl[metric], metric)) + "</td>"
+      + '<td class="pct">' + fmtPct(f.excl[metric], total) + "</td>"
+      + '<td class="barcell"><span class="bar"><i style="width:' + w.toFixed(2) + '%"></i></span></td>'
+      + "</tr>";
+  }).join("");
+
+  $("#counts").textContent = shown.length + " / " + list.length + " functions";
+  $("#more").innerHTML = list.length > rowLimit
+    ? '<button class="btn" id="moreBtn">Show ' + Math.min(500, list.length - rowLimit) + " more…</button>"
+    : "";
+  var mb = $("#moreBtn");
+  if (mb) mb.onclick = function(){ rowLimit += 500; renderFlat(); };
+}
+
+/* ---------------- function detail panel ---------------- */
+
+function openFunc(name){
+  var f = M.funcs.get(name);
+  if (!f) return;
+  $("#pTitle").textContent = name;
+  var total = M.totals[metric] || 1;
+
+  var html = '<div class="mgrid"><div><div class="k">Calls</div><div class="v">' + fmtInt(f.ct) + "</div></div>";
+  M.metricList.forEach(function(m){
+    var t = M.totals[m] || 1;
+    html += '<div><div class="k">Incl ' + esc(label(m)) + '</div><div class="v">' + esc(fmtMetric(f.incl[m], m))
+          + '</div><div class="k">' + fmtPct(f.incl[m], t) + " of run</div></div>";
+    html += '<div><div class="k">Excl ' + esc(label(m)) + '</div><div class="v">' + esc(fmtMetric(f.excl[m], m))
+          + '</div><div class="k">' + fmtPct(f.excl[m], t) + " of run</div></div>";
+    if (f.ct) html += '<div><div class="k">Per call &middot; ' + esc(label(m)) + '</div><div class="v">'
+          + esc(fmtMetric(f.incl[m] / f.ct, m)) + "</div></div>";
+  });
+  html += "</div>";
+
+  function edgeTable(list, side){
+    if (!list.length) return '<div class="empty">none</div>';
+    var rows = list.slice().sort(function(a, b){ return (b.m[metric] || 0) - (a.m[metric] || 0); }).map(function(e){
+      var other = side === "parents" ? (e.parent === null ? "(entry point)" : e.parent) : e.child;
+      var clickable = !(side === "parents" && e.parent === null);
+      return "<tr" + (clickable ? ' data-f="' + esc(other) + '"' : ' style="cursor:default"') + ">"
+        + '<td title="' + esc(other) + '">' + esc(shortName(other)) + "</td>"
+        + "<td>" + fmtInt(e.ct) + "</td>"
+        + "<td>" + esc(fmtMetric(e.m[metric] || 0, metric)) + "</td>"
+        + '<td class="pct">' + fmtPct(e.m[metric] || 0, f.incl[metric] || 1) + "</td>"
+        + '<td class="pct">' + fmtPct(e.m[metric] || 0, total) + "</td></tr>";
+    }).join("");
+    return "<table><thead><tr><th>" + (side === "parents" ? "Caller" : "Callee")
+      + "</th><th>Calls</th><th>" + esc(label(metric)) + "</th><th>% of fn</th><th>% of run</th></tr></thead><tbody>"
+      + rows + "</tbody></table>";
+  }
+
+  html += "<h4>Called by (" + f.parents.length + ")</h4>" + edgeTable(f.parents, "parents");
+  html += "<h4>Calls (" + f.children.length + ")</h4>" + edgeTable(f.children, "children");
+
+  var body = $("#pBody");
+  body.innerHTML = html;
+  body.scrollTop = 0;
+  body.querySelectorAll("tr[data-f]").forEach(function(tr){
+    tr.onclick = function(){ openFunc(tr.dataset.f); };
+  });
+  $("#panel").classList.add("on");
+}
+
+/* ---------------- call tree (aggregated, edge-weighted) ---------------- */
+
+function childEdgesScaled(name, value){
+  var f = M.funcs.get(name);
+  if (!f) return [];
+  var inclF = f.incl[metric] || 0;
+  var factor = inclF > 0 ? value / inclF : 0;
+  return f.children.map(function(e){
+    return { name: e.child, value: Math.max(0, (e.m[metric] || 0) * factor), ct: e.ct };
+  }).filter(function(c){ return c.value > 0 || c.ct > 0; })
+    .sort(function(a, b){ return b.value - a.value; });
+}
+
+function renderTree(){
+  var root = $("#root").value || M.roots[0];
+  var f = M.funcs.get(root);
+  var box = $("#tree");
+  box.innerHTML = "";
+  box.appendChild(treeNode(root, f ? Math.max(0, f.incl[metric] || 0) : 0, f ? f.ct : 0,
+                           new Set([root]), M.totals[metric] || 1, true));
+}
+
+function treeRow(name, value, ct, total, kidsCount, open, recursive){
+  var row = document.createElement("div");
+  row.className = "tn" + (recursive ? " rec" : "");
+  var w = Math.max(0, Math.min(100, pct(value, total)));
+  row.innerHTML =
+      '<button class="tk">' + (recursive ? "↻" : kidsCount ? (open ? "▾" : "▸") : "·") + "</button>"
+    + '<span class="tw">' + esc(fmtMetric(value, metric)) + "</span>"
+    + '<span class="tp">' + w.toFixed(2) + "%</span>"
+    + '<span class="tc">' + fmtInt(ct) + " ×</span>"
+    + '<span class="tg">' + (recursive ? "" : '<span class="bar"><i style="width:' + w.toFixed(2) + '%"></i></span>') + "</span>"
+    + '<span class="nm" title="' + esc(name) + '">' + esc(shortName(name)) + (recursive ? " (recursive)" : "") + "</span>";
+  row.querySelector(".nm").onclick = function(){ openFunc(name); };
+  return row;
+}
+
+function treeNode(name, value, ct, path, total, open){
+  var wrap = document.createElement("div");
+  var f = M.funcs.get(name);
+  var kidsCount = f ? f.children.length : 0;
+
+  var row = treeRow(name, value, ct, total, kidsCount, open, false);
+  wrap.appendChild(row);
+
+  var kids = document.createElement("div");
+  kids.className = "tkids";
+  kids.style.display = open ? "" : "none";
+  wrap.appendChild(kids);
+
+  var built = false;
+  function build(){
+    if (built) return;
+    built = true;
+    childEdgesScaled(name, value).forEach(function(c){
+      if (path.has(c.name)){
+        kids.appendChild(treeRow(c.name, c.value, c.ct, total, 0, false, true));
+        return;
+      }
+      var p = new Set(path);
+      p.add(c.name);
+      kids.appendChild(treeNode(c.name, c.value, c.ct, p, total, false));
+    });
+    if (!kids.children.length) kids.innerHTML = '<div class="empty">no callees</div>';
+  }
+  if (open) build();
+
+  var toggle = row.querySelector(".tk");
+  toggle.onclick = function(){
+    if (!kidsCount) return;
+    build();
+    var visible = kids.style.display !== "none";
+    kids.style.display = visible ? "none" : "";
+    toggle.textContent = visible ? "▸" : "▾";
+  };
+  return wrap;
+}
+
+/* ---------------- flame graph ---------------- */
+
+var ROW_H = 18, MAX_DEPTH = 48, MAX_FRAMES = 20000;
+
+function buildFlame(rootName){
+  var f = M.funcs.get(rootName);
+  var rootVal = f ? Math.max(0, f.incl[metric] || 0) : 0;
+  var min = rootVal * 0.0008;
+  var count = 0;
+  function node(name, value, ct, path, depth, rec){
+    var n = { name: name, value: value, ct: ct, depth: depth, rec: !!rec, children: [] };
+    if (rec || depth >= MAX_DEPTH || count > MAX_FRAMES) return n;
+    childEdgesScaled(name, value).forEach(function(c){
+      if (c.value <= min) return;
+      count++;
+      if (path.has(c.name)){ n.children.push(node(c.name, c.value, c.ct, path, depth + 1, true)); return; }
+      path.add(c.name);
+      n.children.push(node(c.name, c.value, c.ct, path, depth + 1, false));
+      path.delete(c.name);
+    });
+    return n;
+  }
+  return node(rootName, rootVal, f ? f.ct : 0, new Set([rootName]), 0, false);
+}
+
+function hueOf(name){
+  var h = 0;
+  for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
+
+function renderFlame(){
+  var rootName = flameRoot || $("#root").value || M.roots[0];
+  var flame = $("#flame");
+  if (!isFlameable(metric)){
+    $("#crumb").innerHTML = "";
+    flame.style.height = "auto";
+    flame.innerHTML = '<div class="empty">The flame graph only makes sense for time or count metrics '
+      + "(memory deltas can be negative). Switch the metric to wall time, CPU or calls.</div>";
+    return;
+  }
+
+  var tree = buildFlame(rootName);
+  var total = tree.value || 1;
+  var out = [], maxDepth = 0;
+
+  (function layout(n, x0, w){
+    maxDepth = Math.max(maxDepth, n.depth);
+    if (w > 0.04){
+      out.push('<div class="fr" data-f="' + esc(n.name) + '" title="' + esc(n.name) + "\n"
+        + esc(fmtMetric(n.value, metric)) + " · " + pct(n.value, total).toFixed(2) + "% · "
+        + fmtInt(n.ct) + " calls" + (n.rec ? " · recursion cut off" : "") + '"'
+        + ' style="left:' + x0.toFixed(4) + "%;width:" + w.toFixed(4) + "%;top:" + (n.depth * ROW_H)
+        + "px;background:hsl(" + hueOf(n.name) + "," + (n.rec ? "20%,62%" : "62%,64%") + ')">'
+        + (w > 1.2 ? esc(n.name) : "") + "</div>");
+    }
+    var cx = x0;
+    n.children.forEach(function(c){
+      var cw = n.value > 0 ? (c.value / n.value) * w : 0;
+      layout(c, cx, cw);
+      cx += cw;
+    });
+  })(tree, 0, 100);
+
+  flame.innerHTML = out.join("");
+  flame.style.height = ((maxDepth + 1) * ROW_H + 4) + "px";
+  flame.querySelectorAll(".fr").forEach(function(el){
+    el.onclick = function(ev){
+      var n = el.dataset.f;
+      if (ev.altKey || ev.metaKey || ev.ctrlKey){ openFunc(n); return; }
+      if (n === rootName) return;
+      flamePath.push(rootName);
+      flameRoot = n;
+      renderFlame();
+    };
+  });
+
+  var crumbs = flamePath.concat([rootName]);
+  $("#crumb").innerHTML = '<button data-i="-1">⌂ reset</button>'
+    + crumbs.map(function(c, i){ return '<button data-i="' + i + '">' + esc(shortName(c)) + "</button>"; }).join(" › ")
+    + ' <span class="hint">click a frame to zoom &middot; alt/⌘-click for details</span>';
+  $("#crumb").querySelectorAll("button").forEach(function(b){
+    b.onclick = function(){
+      var i = +b.dataset.i;
+      if (i < 0){ flameRoot = null; flamePath = []; }
+      else { flameRoot = crumbs[i]; flamePath = crumbs.slice(0, i); }
+      renderFlame();
+    };
+  });
+}
+
+/* ---------------- insights: description, blockers, suggestions ---------------- */
+
+/* The metric the analysis reasons about: wall time if we have it, else the
+   closest thing to "cost" the profile carries. */
+function analysisMetric(){
+  var pref = ["wt", "cpu", "samples", "utime"];
+  for (var i = 0; i < pref.length; i++) if (M.metricList.indexOf(pref[i]) >= 0) return pref[i];
+  return M.metricList[0];
+}
+
+/* name -> pattern rules. Each fires on the functions it matches, once. */
+var SUGGESTION_RULES = [
+  { id: "db",
+    re: /^(PDO|PDOStatement|mysqli|mysqli_stmt|Doctrine\\|Illuminate\\Database)|::(query|exec|execute|fetchAll|fetchAssoc)$|^(mysql_query|mysqli_query|mysqli_real_query|pg_query|pg_query_params|sqlsrv_query|oci_execute)$/i,
+    title: "Database round-trips dominate a visible share of the run",
+    fix: "Batch the queries (one IN(...) instead of a query per row), add the missing index, or cache the result set. Check whether the same statement is prepared repeatedly instead of once." },
+  { id: "orm",
+    re: /Repository|Hydrator|::(find|findBy|findAll|findOne|findOneBy|hydrate)[A-Za-z]*$|Doctrine\\ORM/i,
+    title: "Repository/ORM accessors are called a lot",
+    fix: "Fetch the whole collection in one call and index it in memory, or eager-load the relation (JOIN / WITH) instead of resolving it per entity.",
+    minCt: 200 },
+  { id: "autoload",
+    re: /Autoload|autoload|spl_autoload_call|class_exists|interface_exists/i,
+    title: "Class autoloading is expensive",
+    fix: "Dump an authoritative classmap (composer dump-autoload -a -o) and enable opcache with opcache.preload for the hot classes." },
+  { id: "include",
+    re: /^(include|include_once|require|require_once|load::)/i,
+    title: "File inclusion costs real time",
+    fix: "Enable opcache (opcache.validate_timestamps=0 in production) so files are not re-parsed on every request." },
+  { id: "http",
+    re: /^(curl_exec|curl_multi_exec|file_get_contents|fsockopen|stream_socket_client|socket_connect)$|Guzzle|HttpClient|::request$/i,
+    title: "Outbound calls block the request",
+    fix: "Cache the responses, shorten the timeouts, run independent calls concurrently (curl_multi), or move the work to a queue." },
+  { id: "fs",
+    re: /^(file_exists|is_file|is_dir|is_readable|stat|lstat|filemtime|realpath|glob|scandir|opendir|readdir|fopen|fread|fwrite|unlink|touch)$/i,
+    title: "High volume of filesystem stat/read calls",
+    fix: "Cache the lookups in memory, raise realpath_cache_size, and avoid file_exists() checks on paths you are about to open anyway." },
+  { id: "serialize",
+    re: /^(json_encode|json_decode|serialize|unserialize|igbinary_serialize|igbinary_unserialize|var_export|msgpack_pack|msgpack_unpack)$/i,
+    title: "Serialization is a hot path",
+    fix: "Shrink the payload, keep the decoded structure around instead of re-decoding, or move to a cheaper codec (igbinary / msgpack)." },
+  { id: "regex",
+    re: /^(preg_match|preg_match_all|preg_replace|preg_replace_callback|preg_split|preg_quote)$/i,
+    title: "Heavy regular-expression usage",
+    fix: "Hoist the patterns out of the loop, replace simple patterns with str_contains/strtr/explode, and beware catastrophic backtracking in nested quantifiers." },
+  { id: "linear_search",
+    re: /^(in_array|array_search|array_keys|array_unique|array_diff|array_intersect|array_merge)$/i,
+    title: "Linear array operations called very often",
+    fix: "This is usually an accidental O(n²): flip the haystack into an associative array and use isset(), and build arrays with $a[] = ... / spread instead of array_merge in a loop." },
+  { id: "sort",
+    re: /^(usort|uasort|uksort|array_multisort)$/i,
+    title: "Userland sorting with a PHP comparator",
+    fix: "The callback is invoked O(n log n) times. Sort by a precomputed key (array_multisort / array_column) or let the database do the ordering.",
+    minCt: 500 },
+  { id: "template",
+    re: /Twig|Smarty|Blade|Latte|::render$|::renderBlock$/i,
+    title: "Template rendering is a significant slice",
+    fix: "Make sure compiled templates are cached on disk (and not recompiled per request), and cache the expensive fragments." },
+  { id: "reflection",
+    re: /^Reflection|::newInstanceArgs$|::getAttributes$|::invokeArgs$/i,
+    title: "Reflection used at runtime",
+    fix: "Cache the reflection results (metadata, annotations, container wiring) or compile them at build time — most frameworks offer a compiled container for this." },
+  { id: "log",
+    re: /Monolog|^error_log$|^syslog$|::log$|Logger::/i,
+    title: "Logging is on the hot path",
+    fix: "Raise the log level in production, buffer the writes, and keep debug-level formatting behind a level check so the message is never built." },
+  { id: "crypt",
+    re: /^(password_hash|password_verify|crypt|hash_pbkdf2|openssl_|sodium_)/i,
+    title: "Cryptographic work in the request",
+    fix: "That cost is by design for password hashing — just make sure it happens once per request, and tune the cost factor deliberately." },
+  { id: "sleep",
+    re: /^(sleep|usleep|time_nanosleep)$/i,
+    title: "The code sleeps during the request",
+    fix: "Remove the sleep or move the polling to a background worker — it blocks the response for nothing.",
+    minCt: 1, minPct: 0 },
+  { id: "event",
+    re: /Dispatcher|EventDispatcher|::dispatch$|::notify$|::trigger$/i,
+    title: "Event dispatching overhead",
+    fix: "Trim the listeners registered on the hot events and avoid instantiating listeners that end up doing nothing." },
+  { id: "gc",
+    re: /^gc_collect_cycles$/i,
+    title: "Explicit garbage collection",
+    fix: "Cycle collection is expensive; drop the manual call unless you measured that it helps.",
+    minCt: 1, minPct: 0 }
+];
+
+function buildInsights(){
+  var am = analysisMetric();
+  var funcsAll = Array.from(M.funcs.values());
+  /* Percentages are relative to the whole run. The root's inclusive value is the
+     right total, except when it is missing or inconsistent (partial or merged
+     profiles, count-only metrics) — then fall back to the sum of self values. */
+  var sumPos = 0, maxSelf = 0;
+  funcsAll.forEach(function(f){
+    var v = f.excl[am] || 0;
+    if (v > 0) sumPos += v;
+    maxSelf = Math.max(maxSelf, v);
+  });
+  var total = am === "ct" ? (M.totalCt || 0) : (M.totals[am] || 0);
+  if (!(total > 0) || total < maxSelf) total = Math.max(sumPos, maxSelf) || 1;
+  var hasCpu = M.metricList.indexOf("cpu") >= 0 && M.metricList.indexOf("wt") >= 0;
+  var funcs = funcsAll;
+  var pctOf = function(v){ return 100 * v / total; };
+  /* Exclusive values can be negative (memory deltas, or call counts which do not
+     telescope); clamp them when we reason about shares. */
+  var selfOf = function(f){ return Math.max(0, f.excl[am] || 0); };
+  var sumPosOf = function(m){
+    var t = 0;
+    funcsAll.forEach(function(f){ if ((f.excl[m] || 0) > 0) t += f.excl[m]; });
+    return Math.max(M.totals[m] || 0, t);
+  };
+
+  /* ---- quick description ---- */
+  var desc = [];
+  var bySelf = funcs.slice().sort(function(a, b){ return selfOf(b) - selfOf(a); });
+  var top5Pct = bySelf.slice(0, 5).reduce(function(s, f){ return s + pctOf(selfOf(f)); }, 0);
+
+  desc.push("The run covers <b>" + fmtInt(M.funcs.size) + " functions</b> over <b>" + fmtInt(M.totalCt)
+    + " calls</b>" + (am === "ct" ? "" : ", for a total " + esc(label(am)).toLowerCase()
+    + " of <b>" + esc(fmtMetric(total, am)) + "</b>")
+    + " (entry point <code>" + esc(shortName(M.roots[0])) + "</code>)."
+    + (am === "ct" ? " This profile carries no time or memory metric, so the analysis below ranks by call volume only." : ""));
+
+  var need80 = 0, acc = 0;
+  for (var i = 0; i < bySelf.length && acc < 80; i++){ acc += pctOf(selfOf(bySelf[i])); need80++; }
+  desc.push("Cost is " + (need80 <= 10 ? "<b>concentrated</b>" : need80 <= 40 ? "<b>moderately spread</b>" : "<b>very spread out</b>")
+    + ": <b>" + need80 + "</b>" + (need80 > 1 ? " functions account" : " function accounts") + " for 80% of the self "
+    + esc(label(am)).toLowerCase() + ", and the top five alone for " + top5Pct.toFixed(1) + "%"
+    + (need80 > 40 ? " — expect death-by-a-thousand-cuts rather than one fixable hotspot." : "."));
+
+  if (hasCpu){
+    var cpuRatio = 100 * (M.totals.cpu || 0) / (M.totals.wt || 1);
+    if (cpuRatio < 55) desc.push("Only <b>" + cpuRatio.toFixed(0) + "%</b> of the wall time is CPU: the request is <b>I/O bound</b> — most of it is spent waiting on the database, the network or the filesystem.");
+    else if (cpuRatio > 85) desc.push("<b>" + cpuRatio.toFixed(0) + "%</b> of the wall time is CPU: the request is <b>CPU bound</b>, so look for algorithmic work rather than waits.");
+    else desc.push("<b>" + cpuRatio.toFixed(0) + "%</b> of the wall time is CPU — a mix of computation and waiting.");
+  }
+
+  if (M.metricList.indexOf("mu") >= 0){
+    var peak = 0;
+    funcs.forEach(function(f){ peak = Math.max(peak, f.incl.pmu || 0); });
+    desc.push("Memory: <b>" + esc(fmtBytes(sumPosOf("mu"))) + "</b> allocated"
+      + (peak ? ", peak <b>" + esc(fmtBytes(peak)) + "</b>" : "") + ".");
+  }
+
+  var avgCall = M.totalCt ? total / M.totalCt : 0;
+  if (M.totalCt > 200000)
+    desc.push("<b>" + fmtInt(M.totalCt) + " calls</b> at " + esc(fmtMetric(avgCall, am))
+      + " each: at this volume the PHP call overhead itself is part of the bill.");
+
+  /* ---- blocking points ---- */
+  var blockersBy = {};
+  function blocker(f, sev, reason){
+    var b = blockersBy[f.name];
+    if (!b) b = blockersBy[f.name] = { fn: f, sev: sev, reasons: [], score: 0 };
+    if (["hi", "med", "low"].indexOf(sev) < ["hi", "med", "low"].indexOf(b.sev)) b.sev = sev;
+    b.reasons.push(reason);
+    b.score = Math.max(b.score, pctOf(f.excl[am]), pctOf(f.incl[am]) / 2);
+  }
+
+  var isRoot = function(f){ return M.roots.indexOf(f.name) >= 0; };
+
+  bySelf.forEach(function(f){
+    var p = pctOf(f.excl[am]);
+    if (p < 4 || isRoot(f)) return;
+    blocker(f, p >= 20 ? "hi" : p >= 9 ? "med" : "low",
+      "Burns <b>" + esc(fmtMetric(f.excl[am], am)) + "</b> of self " + esc(label(am)).toLowerCase()
+      + " (<b>" + p.toFixed(1) + "%</b> of the run) across " + fmtInt(f.ct) + " call" + (f.ct > 1 ? "s" : "")
+      + (f.ct > 1 ? ", " + esc(fmtMetric(f.excl[am] / f.ct, am)) + " each" : "") + ".");
+  });
+
+  if (hasCpu){
+    funcs.forEach(function(f){
+      var wait = (f.excl.wt || 0) - (f.excl.cpu || 0);
+      var p = 100 * wait / (M.totals.wt || 1);
+      if (p < 8) return;
+      blocker(f, p >= 25 ? "hi" : "med",
+        "Spends <b>" + esc(fmtUs(wait)) + "</b> (<b>" + p.toFixed(1) + "%</b> of the run) <b>off-CPU</b> — this is a wait, "
+        + "not computation: I/O, a lock, or a remote service.");
+    });
+  }
+
+  funcs.forEach(function(f){
+    if (!f.ct) return;
+    var per = f.incl[am] / f.ct;
+    var p = pctOf(f.incl[am]);
+    var trunk = p >= 50 || (pctOf(f.excl[am]) < 3 && f.children.length);
+    if (unitOf(am) === "us" && per >= 100000 && p >= 8 && !trunk && !isRoot(f))
+      blocker(f, p >= 25 ? "hi" : "med",
+        "Each call costs <b>" + esc(fmtMetric(per, am)) + "</b> inclusive (" + fmtInt(f.ct) + " call"
+        + (f.ct > 1 ? "s" : "") + ", " + p.toFixed(1) + "% of the run) — a single slow operation, not a volume problem.");
+    if (f.ct >= 5000 && pctOf(f.excl[am]) >= 2 && !isRoot(f))
+      blocker(f, "med", "Called <b>" + fmtInt(f.ct) + " times</b> for " + esc(fmtMetric(f.excl[am], am))
+        + " of self time — the call volume is the problem, not the function.");
+  });
+
+  /* fan-out: one caller invoking the same callee hundreds of times (N+1 shape) */
+  M.edges.forEach(function(e){
+    if (!e.parent || e.ct < 50) return;
+    var cost = e.m[am] || 0;
+    if (pctOf(cost) < 5) return;
+    var f = M.funcs.get(e.child);
+    if (!f) return;
+    blocker(f, pctOf(cost) >= 15 ? "hi" : "med",
+      "<code>" + esc(shortName(e.parent)) + "</code> calls it <b>" + fmtInt(e.ct)
+      + " times</b> for " + esc(fmtMetric(cost, am)) + " (" + pctOf(cost).toFixed(1)
+      + "% of the run) — a loop calling out per iteration.");
+  });
+
+  var recursive = M.edges.filter(function(e){ return e.parent === e.child && e.ct > 0; })
+    .sort(function(a, b){ return (b.m[am] || 0) - (a.m[am] || 0); });
+  recursive.forEach(function(e){
+    var f = M.funcs.get(e.child);
+    if (!f || pctOf(e.m[am] || 0) < 5) return;
+    blocker(f, "med", "Directly recursive: <b>" + fmtInt(e.ct) + "</b> self-calls for "
+      + esc(fmtMetric(e.m[am] || 0, am)) + " — check the depth and memoize repeated sub-results.");
+  });
+
+  if (M.metricList.indexOf("mu") >= 0){
+    funcs.slice().sort(function(a, b){ return (b.excl.mu || 0) - (a.excl.mu || 0); }).slice(0, 3).forEach(function(f){
+      var p = 100 * (f.excl.mu || 0) / (M.totals.mu || 1);
+      if (p < 20) return;
+      blocker(f, "med", "Allocates <b>" + esc(fmtBytes(f.excl.mu)) + "</b> on its own (<b>" + p.toFixed(1)
+        + "%</b> of everything allocated) — a good candidate for streaming/generators instead of building the whole set in memory.");
+    });
+  }
+
+  var blockers = Object.keys(blockersBy).map(function(k){ return blockersBy[k]; })
+    .sort(function(a, b){
+      var o = ["hi", "med", "low"];
+      return o.indexOf(a.sev) - o.indexOf(b.sev) || b.score - a.score;
+    }).slice(0, 12);
+
+  /* ---- suggestions ---- */
+  var sugg = [];
+  SUGGESTION_RULES.forEach(function(r){
+    var hit = funcs.filter(function(f){ return r.re.test(f.name); });
+    if (!hit.length) return;
+    var selfCost = hit.reduce(function(s, f){ return s + f.excl[am]; }, 0);
+    var inclCost = hit.reduce(function(s, f){ return s + f.incl[am]; }, 0);
+    var calls = hit.reduce(function(s, f){ return s + f.ct; }, 0);
+    var p = pctOf(selfCost), pIncl = pctOf(inclCost);
+    var minPct = r.minPct === undefined ? 3 : r.minPct;
+    var minCt = r.minCt === undefined ? 2000 : r.minCt;
+    if (p < minPct && calls < minCt) return;
+    hit.sort(function(a, b){ return b.excl[am] - a.excl[am]; });
+    sugg.push({
+      sev: p >= 15 ? "hi" : p >= 5 ? "med" : "low",
+      score: p,
+      title: r.title,
+      evidence: fmtInt(calls) + " call" + (calls > 1 ? "s" : "") + " · " + fmtMetric(selfCost, am)
+        + " self (" + p.toFixed(1) + "%)" + (pIncl > p + 1 ? " · " + fmtMetric(inclCost, am) + " inclusive (" + pIncl.toFixed(1) + "%)" : ""),
+      fix: r.fix,
+      fns: hit.slice(0, 6).map(function(f){ return f.name; })
+    });
+  });
+
+  /* structural suggestions that do not depend on function names */
+  if (need80 > 40)
+    sugg.push({ sev: "med", score: 4, title: "No single hotspot — the cost is structural",
+      evidence: need80 + " functions needed to reach 80% of self " + label(am).toLowerCase(),
+      fix: "Micro-optimising one function will not move the needle. Look one level up: cut the number of objects/rows processed, cache the whole operation, or skip the work entirely for this code path.", fns: [] });
+  if (M.totalCt > 500000)
+    sugg.push({ sev: "med", score: 6, title: "Very high call volume", evidence: fmtInt(M.totalCt) + " calls in one run",
+      fix: "Reduce the amount of data flowing through the loop (fewer rows, fewer objects) rather than the cost per call — and make sure profiling overhead is not inflating what you read here.", fns: [] });
+  if (hasCpu && 100 * (M.totals.cpu || 0) / (M.totals.wt || 1) < 55)
+    sugg.push({ sev: "hi", score: 30, title: "The request mostly waits", evidence: (100 * (M.totals.cpu || 0) / (M.totals.wt || 1)).toFixed(0) + "% of wall time is CPU",
+      fix: "Start with the off-CPU blockers below/above: query count and latency, external HTTP calls, filesystem access. Faster PHP code will barely help here.", fns: [] });
+  if (M.roots.length > 3)
+    sugg.push({ sev: "low", score: 1, title: M.roots.length + " entry points in this profile",
+      evidence: "roots: " + M.roots.slice(0, 4).map(shortName).join(", ") + (M.roots.length > 4 ? ", …" : ""),
+      fix: "Several call graphs are merged here (aggregated runs, or a profiler started late). Percentages are relative to their sum — pick a root in the toolbar to read one graph at a time.", fns: [] });
+
+  sugg.sort(function(a, b){
+    var o = ["hi", "med", "low"];
+    return o.indexOf(a.sev) - o.indexOf(b.sev) || b.score - a.score;
+  });
+
+  return { desc: desc, blockers: blockers, sugg: sugg, am: am };
+}
+
+function renderInsight(){
+  var box = $("#insight");
+  var r;
+  try { r = buildInsights(); }
+  catch (e){ box.innerHTML = '<div class="empty">Could not analyse this profile: ' + esc(e.message) + "</div>"; return; }
+
+  var SEV = { hi: "critical", med: "worth a look", low: "minor" };
+  function chips(names){
+    if (!names.length) return "";
+    return '<div class="chips">' + names.map(function(n){
+      return '<button class="chip" data-f="' + esc(n) + '" title="' + esc(n) + '">' + esc(shortName(n)) + "</button>";
+    }).join("") + "</div>";
+  }
+
+  var html = '<div class="ins">';
+
+  html += '<h3>What this profile says</h3><div class="desc">'
+    + r.desc.map(function(d){ return "<p>" + d + "</p>"; }).join("") + "</div>";
+
+  html += "<h3>Blocking points <span class=\"n\">" + r.blockers.length + "</span></h3>";
+  html += r.blockers.length
+    ? r.blockers.map(function(b){
+        return '<div class="card ' + b.sev + '">'
+          + '<div class="ct"><span class="sev">' + SEV[b.sev] + '</span>'
+          + '<button class="fn" data-f="' + esc(b.fn.name) + '">' + esc(shortName(b.fn.name)) + "</button></div>"
+          + "<ul>" + b.reasons.map(function(x){ return "<li>" + x + "</li>"; }).join("") + "</ul></div>";
+      }).join("")
+    : '<div class="empty">Nothing stands out: no function takes a disproportionate share of the run.</div>';
+
+  html += "<h3>Suggestions <span class=\"n\">" + r.sugg.length + "</span></h3>";
+  html += r.sugg.length
+    ? r.sugg.map(function(s){
+        return '<div class="card ' + s.sev + '">'
+          + '<div class="ct"><span class="sev">' + SEV[s.sev] + '</span><span class="ti">' + esc(s.title) + "</span></div>"
+          + '<div class="ev">' + esc(s.evidence) + "</div>"
+          + "<p>" + esc(s.fix) + "</p>" + chips(s.fns) + "</div>";
+      }).join("")
+    : '<div class="empty">No known pattern matched. Read the flat profile sorted by self time.</div>';
+
+  html += '<p class="foot">Heuristics, not verdicts: they are name- and share-based, computed on '
+    + esc(label(r.am).toLowerCase()) + '. Confirm each one in the flat profile or the call tree before changing code.</p>';
+  html += "</div>";
+
+  box.innerHTML = html;
+  box.querySelectorAll("[data-f]").forEach(function(el){
+    el.onclick = function(){ openFunc(el.dataset.f); };
+  });
+}
+
+/* ---------------- info tab ---------------- */
+
+function renderInfo(){
+  var lines = [];
+  lines.push("File:      " + META.file);
+  lines.push("Format:    " + META.format);
+  lines.push("Metrics:   " + M.metricList.join(", "));
+  lines.push("Roots:     " + M.roots.join(", "));
+  lines.push("Functions: " + M.funcs.size + "    Call edges: " + M.edges.length + "    Calls: " + fmtInt(M.totalCt));
+  M.metricList.forEach(function(m){ lines.push("Total " + (m + "      ").slice(0, 8) + fmtMetric(M.totals[m], m)); });
+  if (META.meta) lines.push("\nMetadata:\n" + JSON.stringify(META.meta, null, 2));
+  lines.push("\nHow to read this\n"
+    + "· Inclusive = time/memory spent in the function AND everything it calls.\n"
+    + "· Exclusive (self)  = inclusive minus the cost of its callees. Sort by this to find hot spots.\n"
+    + "· An XHProf profile is aggregated per caller→callee edge, not a timeline. The call tree and\n"
+    + "  flame graph therefore distribute each edge's cost proportionally to the caller's share, and\n"
+    + "  recursion is cut off where a function reappears in its own stack (marked ↻ / greyed out).\n"
+    + "· mu/pmu are memory deltas and can be negative; they are excluded from the flame graph.\n"
+    + "· The Insights tab describes the run, ranks the blocking points and matches known slow patterns.\n"
+    + "  Those are heuristics computed from names and cost shares — verify them here before acting on them.");
+  $("#raw").textContent = lines.join("\n");
+}
+
+/* ---------------- CSV export ---------------- */
+
+function exportCsv(){
+  var total = M.totals[metric] || 1;
+  var rows = [["function", "calls", "incl_" + metric, "incl_pct", "excl_" + metric, "excl_pct"]];
+  filteredFuncs().forEach(function(f){
+    rows.push([f.name, f.ct, f.incl[metric], pct(f.incl[metric], total).toFixed(4), f.excl[metric], pct(f.excl[metric], total).toFixed(4)]);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){
+      return /[",\n]/.test(String(c)) ? '"' + String(c).replace(/"/g, '""') + '"' : c;
+    }).join(",");
+  }).join("\n");
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = (META.file || "profile").replace(/\.[^.]*$/, "") + "-" + metric + ".csv";
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+}
+
+/* ---------------- events ---------------- */
+
+document.querySelectorAll(".tab").forEach(function(t){
+  t.onclick = function(){
+    document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === t); });
+    document.querySelectorAll(".view").forEach(function(v){ v.classList.toggle("on", v.id === "view-" + t.dataset.view); });
+  };
+});
+
+$("#flat").addEventListener("click", function(e){
+  var tr = e.target.closest("tbody tr[data-f]");
+  if (tr) openFunc(tr.dataset.f);
+});
+$("#flat thead").addEventListener("click", function(e){
+  var th = e.target.closest("th[data-k]");
+  if (!th) return;
+  var k = th.dataset.k;
+  if (k === sortKey) sortDir = -sortDir;
+  else { sortKey = k; sortDir = k === "name" ? 1 : -1; }
+  renderFlat();
+});
+$("#q").oninput = function(){ rowLimit = 250; renderFlat(); };
+$("#metric").onchange = function(e){ metric = e.target.value; flameRoot = null; flamePath = []; renderAll(); };
+$("#root").onchange = function(){ flameRoot = null; flamePath = []; renderTree(); renderFlame(); };
+$("#csvBtn").onclick = exportCsv;
+$("#pClose").onclick = function(){ $("#panel").classList.remove("on"); };
+document.addEventListener("keydown", function(e){ if (e.key === "Escape") $("#panel").classList.remove("on"); });
+
+$("#fileInput").onchange = function(e){ loadFile(e.target.files[0]); };
+$("#pickBtn").onclick = function(){ $("#fileInput").click(); };
+$("#openBtn").onclick = function(){ $("#fileInput").click(); };
+$("#pasteBtn").onclick = function(){
+  var ta = $("#pasteArea");
+  ta.style.display = ta.style.display === "block" ? "none" : "block";
+  ta.focus();
+};
+$("#pasteArea").onkeydown = function(e){
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") load(e.target.value, "(pasted data)");
+};
+
+var dz = $("#drop");
+["dragenter", "dragover"].forEach(function(ev){
+  document.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.add("hot"); });
+});
+document.addEventListener("dragleave", function(e){ if (e.target === dz) dz.classList.remove("hot"); });
+document.addEventListener("drop", function(e){
+  e.preventDefault();
+  dz.classList.remove("hot");
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+
+$("#themeBtn").onclick = function(){
+  var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("xhprof-theme", next); } catch (e){}
+};
+try {
+  var saved = localStorage.getItem("xhprof-theme");
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  else if (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches)
+    document.documentElement.setAttribute("data-theme", "light");
+} catch (e){}
+
+/* ---------------- demo profile ---------------- */
+
+$("#demoBtn").onclick = function(){
+  var p = {
+    "main()":                                  { ct: 1,    wt: 412500, cpu: 380000, mu: 2100000, pmu: 2600000 },
+    "main()==>bootstrap":                      { ct: 1,    wt: 61000,  cpu: 58000,  mu: 900000,  pmu: 1200000 },
+    "bootstrap==>Composer\\Autoload::load":    { ct: 212,  wt: 38000,  cpu: 36000,  mu: 640000,  pmu: 800000 },
+    "bootstrap==>config_load":                 { ct: 1,    wt: 12000,  cpu: 11000,  mu: 120000,  pmu: 150000 },
+    "config_load==>file_get_contents":         { ct: 6,    wt: 8200,   cpu: 2000,   mu: 40000,   pmu: 60000 },
+    "main()==>Router::dispatch":               { ct: 1,    wt: 330000, cpu: 300000, mu: 1100000, pmu: 1300000 },
+    "Router::dispatch==>Controller::index":    { ct: 1,    wt: 322000, cpu: 292000, mu: 1050000, pmu: 1250000 },
+    "Controller::index==>Repository::findAll": { ct: 3,    wt: 210000, cpu: 60000,  mu: 700000,  pmu: 820000 },
+    "Repository::findAll==>PDO::query":        { ct: 12,   wt: 180000, cpu: 22000,  mu: 410000,  pmu: 500000 },
+    "PDO::query==>PDOStatement::fetchAll":     { ct: 12,   wt: 41000,  cpu: 18000,  mu: 300000,  pmu: 380000 },
+    "Repository::findAll==>Hydrator::hydrate": { ct: 900,  wt: 24000,  cpu: 23500,  mu: 250000,  pmu: 300000 },
+    "Hydrator::hydrate==>array_map":           { ct: 900,  wt: 9000,   cpu: 8800,   mu: 90000,   pmu: 110000 },
+    "Controller::index==>Twig::render":        { ct: 1,    wt: 98000,  cpu: 96000,  mu: 320000,  pmu: 400000 },
+    "Twig::render==>Twig::loadTemplate":       { ct: 14,   wt: 26000,  cpu: 25500,  mu: 120000,  pmu: 150000 },
+    "Twig::render==>htmlspecialchars":         { ct: 4200, wt: 16000,  cpu: 15800,  mu: 20000,   pmu: 30000 },
+    "Twig::render==>Twig::render":             { ct: 9,    wt: 31000,  cpu: 30500,  mu: 100000,  pmu: 120000 },
+    "main()==>register_shutdown":              { ct: 1,    wt: 900,    cpu: 800,    mu: 5000,    pmu: 6000 }
+  };
+  load(JSON.stringify(p), "demo-profile.json");
+};
+</script>
+</body>
+</html>
