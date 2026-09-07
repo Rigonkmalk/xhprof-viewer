@@ -1,5 +1,3 @@
-L'écriture dans `xhprof-viewer.md` n'a pas été autorisée — voici le descriptif directement. (Dis-moi si tu veux que je le réécrive dans le `.md`, il est vide et semble prévu pour ça.)
-
 # XHProf Viewer — descriptif
 
 Fichier unique `xhprof-viewer.html` (1359 lignes), autonome : pas de build, pas de dépendance, pas de réseau. On l'ouvre dans un navigateur, on y dépose un profil, tout est traité localement.
