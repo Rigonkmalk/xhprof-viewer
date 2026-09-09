@@ -1,0 +1,52 @@
+# Profiles are real production data: function names, SQL, URLs, request context
+# (XHGui documents embed all of it). Never commit one — the viewer ships a demo
+# profile, and docs/screenshots.js regenerates the documentation from it.
+*.xhprof
+*.xhprof.gz
+*.xhprof.json
+*.prof
+*.cachegrind
+cachegrind.out.*
+profile*.json
+
+# CSV exported by the viewer: same data, flat
+*.csv
+
+# Secrets and local configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets.*
+credentials.*
+.claude/settings.local.json
+
+# Tooling for docs/screenshots.js — puppeteer-core is installed on demand,
+# never vendored (package.json / package-lock.json stay committable)
+node_modules/
+.npm/
+npm-debug.log*
+yarn-error.log*
+
+# Scratch space
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+*.rej
+*.log
+
+# OS and editor noise
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

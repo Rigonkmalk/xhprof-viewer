@@ -101,6 +101,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(500);
   await shot("08-light-filter", "#app", { min: 400 });
 
+  // 9. Diff against a baseline: same demo profile with a few edges made cheaper,
+  // loaded through the baseline path so the Diff tab appears.
+  await page.click("#themeBtn");
+  await page.evaluate(() => { document.querySelector("#q").value = ""; document.querySelector("#q").oninput(); });
+  await sleep(300);
+  await page.evaluate(async () => {
+    const base = JSON.parse(JSON.stringify(window.DEMO_PROFILE));
+    base["Repository::findAll==>PDO::query"].wt *= 2.4;
+    base["Repository::findAll==>Hydrator::hydrate"].ct = 2400;
+    base["Repository::findAll==>Hydrator::hydrate"].wt *= 2;
+    delete base["Twig::render==>htmlspecialchars"];
+    base["main()==>legacy_bootstrap"] = { ct: 1, wt: 42000, cpu: 41000, mu: 90000, pmu: 100000 };
+    await load(JSON.stringify(base), "before-optimisation.json", { baseline: true });
+  });
+  await sleep(400);
+  await page.click('.tab[data-view="diff"]');
+  await sleep(400);
+  await shot("09-diff", "#app", { max: 1600 });
+
   await browser.close();
   console.log("done");
 })().catch((e) => { console.error(e); process.exit(1); });

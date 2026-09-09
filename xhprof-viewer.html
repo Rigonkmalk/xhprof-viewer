@@ -3,20 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Nothing here talks to the network, and the CSP makes that verifiable by the
+     browser rather than a promise in a README. blob: is only for the CSV download. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
 <title>XHProf Viewer</title>
 <style>
 :root{
   --bg:#0f1115; --bg2:#151922; --bg3:#1c2130; --line:#262d3d;
   --fg:#e6e9ef; --fg2:#9aa4b8; --fg3:#6b7488;
   --accent:#5aa9ff; --warn:#ffb454; --bad:#ff6b6b;
-  --bar:#2b4a72; --bar2:#3a6ea5;
+  --bar:#2b4a72; --bar2:#3a6ea5; --ok:#4ec9a0;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
 html[data-theme="light"]{
   --bg:#f7f8fa; --bg2:#fff; --bg3:#eef1f6; --line:#dde2ea;
   --fg:#161a22; --fg2:#5a6377; --fg3:#8b93a5;
-  --accent:#0b6bcb; --bar:#cfe0f5; --bar2:#9dc2ea;
+  --accent:#0b6bcb; --bar:#cfe0f5; --bar2:#9dc2ea; --ok:#127a5e;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -133,6 +137,41 @@ tbody tr:hover{background:var(--bg2)}
 .ins .chip{background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:2px 9px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--fg2);max-width:44ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ins .chip:hover{border-color:var(--accent);color:var(--accent)}
 .ins .foot{color:var(--fg3);font-size:12px;margin-top:22px;border-top:1px solid var(--line);padding-top:12px}
+input[type=search].bad{border-color:var(--bad)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+thead th[aria-sort]{cursor:pointer}
+
+/* header: baseline (diff) chip */
+.chip-base{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:2px 4px 2px 10px;font-size:12px}
+.chip-base .nm{font-family:var(--mono);max-width:26ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-base button{background:none;border:none;color:var(--fg2);cursor:pointer;font-size:13px;padding:0 5px}
+.chip-base button:hover{color:var(--bad)}
+
+/* transient status: a bad second file must not destroy the loaded profile */
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(140%);max-width:min(680px,92vw);background:var(--bg2);border:1px solid var(--bad);border-left:4px solid var(--bad);border-radius:9px;padding:10px 14px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;box-shadow:0 8px 30px rgba(0,0,0,.35);transition:transform .18s ease;z-index:40}
+#toast.on{transform:translateX(-50%)}
+#busy{position:fixed;top:0;left:0;right:0;padding:6px 16px;background:var(--accent);color:#fff;font-size:12px;text-align:center;z-index:50;display:none}
+#busy.on{display:block}
+#backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .18s ease;z-index:19}
+#backdrop.on{opacity:1;pointer-events:auto}
+#panel{visibility:hidden;transition:transform .18s ease,visibility 0s .18s}
+#panel.on{visibility:visible;transition:transform .18s ease,visibility 0s}
+
+/* diff view */
+#diff .up{color:var(--bad)}
+#diff .down{color:var(--ok)}
+#diff .tag{font-size:10px;text-transform:uppercase;letter-spacing:.6px;border:1px solid var(--line);border-radius:20px;padding:1px 6px;color:var(--fg2);margin-left:6px}
+#diff .tag.new{color:var(--warn);border-color:var(--warn)}
+#diff .tag.gone{color:var(--fg3)}
+.note{padding:14px 16px;color:var(--fg2);font-size:13px;max-width:900px}
+.note code{font-family:var(--mono);background:var(--bg3);padding:1px 5px;border-radius:4px}
+
+/* self-test report (?selftest=1) */
+.st{text-align:left;font-family:var(--mono);font-size:12px;max-height:60vh;overflow:auto;margin-top:14px}
+.st div{padding:2px 0;border-bottom:1px solid var(--line)}
+.st .ok{color:var(--ok)}
+.st .ko{color:var(--bad)}
+.st-sum{margin-top:12px;font-family:var(--mono)}
 </style>
 </head>
 <body>
@@ -141,9 +180,12 @@ tbody tr:hover{background:var(--bg2)}
   <h1>XHProf <span>Viewer</span></h1>
   <span class="file-name" id="fileName"></span>
   <span class="spacer"></span>
+  <span class="chip-base" id="baseChip" hidden><span class="nm" id="baseName"></span><button id="baseClear" title="Drop the baseline" aria-label="Drop the baseline">&#10005;</button></span>
   <button class="btn" id="openBtn">Open file</button>
+  <button class="btn" id="baseBtn" title="Load a second profile to diff against">Compare&hellip;</button>
   <input type="file" id="fileInput" hidden>
-  <button class="btn" id="themeBtn" title="Toggle theme">&#9686;</button>
+  <input type="file" id="baseInput" hidden>
+  <button class="btn" id="themeBtn" title="Toggle theme (t)" aria-label="Toggle light/dark theme">&#9686;</button>
 </header>
 
 <div id="drop">
@@ -151,7 +193,7 @@ tbody tr:hover{background:var(--bg2)}
     <h2>Drop an XHProf profile here</h2>
     <p>Everything runs locally in this file &mdash; nothing is uploaded anywhere.</p>
     <p class="hint">Supported: PHP <code>serialize()</code> (<code>*.xhprof</code>), JSON (including XHGui documents),
-       <code>&lt;?php return array(...)</code>, and <code>.gz</code> of any of those.</p>
+       <code>&lt;?php return array(...)</code>, and <code>.gz</code> / raw zlib of any of those.</p>
     <div class="dz-actions">
       <button class="btn primary" id="pickBtn">Choose a file&hellip;</button>
       <button class="btn" id="pasteBtn">Paste raw data</button>
@@ -165,16 +207,18 @@ tbody tr:hover{background:var(--bg2)}
 <div id="app">
   <div class="summary" id="summary"></div>
 
-  <div class="tabs">
-    <button class="tab on" data-view="flat">Flat profile</button>
-    <button class="tab" data-view="tree">Call tree</button>
-    <button class="tab" data-view="flame">Flame graph</button>
-    <button class="tab" data-view="insight">Insights</button>
-    <button class="tab" data-view="info">Info</button>
+  <div class="tabs" role="tablist" aria-label="Profile views">
+    <button class="tab on" id="tab-flat" role="tab" aria-selected="true" aria-controls="view-flat" data-view="flat">Flat profile</button>
+    <button class="tab" id="tab-tree" role="tab" aria-selected="false" aria-controls="view-tree" tabindex="-1" data-view="tree">Call tree</button>
+    <button class="tab" id="tab-flame" role="tab" aria-selected="false" aria-controls="view-flame" tabindex="-1" data-view="flame">Flame graph</button>
+    <button class="tab" id="tab-insight" role="tab" aria-selected="false" aria-controls="view-insight" tabindex="-1" data-view="insight">Insights</button>
+    <button class="tab" id="tab-diff" role="tab" aria-selected="false" aria-controls="view-diff" tabindex="-1" data-view="diff" hidden>Diff</button>
+    <button class="tab" id="tab-info" role="tab" aria-selected="false" aria-controls="view-info" tabindex="-1" data-view="info">Info</button>
   </div>
 
   <div class="toolbar">
-    <input type="search" id="q" placeholder="Filter functions&hellip; (regex ok)">
+    <label class="hint" for="q">Filter</label>
+    <input type="search" id="q" placeholder="Filter functions&hellip; (regex ok, / to focus)" aria-describedby="counts">
     <label class="hint">Metric <select id="metric"></select></label>
     <label class="hint" id="rootWrap">Root <select id="root"></select></label>
     <span class="spacer"></span>
@@ -183,24 +227,29 @@ tbody tr:hover{background:var(--bg2)}
   </div>
 
   <div class="views">
-    <div class="view on" id="view-flat">
+    <div class="view on" id="view-flat" role="tabpanel" aria-labelledby="tab-flat" tabindex="0">
       <table id="flat"><thead></thead><tbody></tbody></table>
       <div class="more" id="more"></div>
     </div>
-    <div class="view" id="view-tree"><div id="tree"></div></div>
-    <div class="view" id="view-flame"><div id="flamewrap"><div class="crumb" id="crumb"></div><div id="flame"></div></div></div>
-    <div class="view" id="view-insight"><div id="insight"></div></div>
-      <div class="view" id="view-info"><div id="raw"></div></div>
+    <div class="view" id="view-tree" role="tabpanel" aria-labelledby="tab-tree" tabindex="0"><div id="tree" role="tree" aria-label="Call tree"></div></div>
+    <div class="view" id="view-flame" role="tabpanel" aria-labelledby="tab-flame" tabindex="0"><div id="flamewrap"><div class="crumb" id="crumb"></div><div id="flame" role="group" aria-label="Flame graph"></div></div></div>
+    <div class="view" id="view-insight" role="tabpanel" aria-labelledby="tab-insight" tabindex="0"><div id="insight"></div></div>
+    <div class="view" id="view-diff" role="tabpanel" aria-labelledby="tab-diff" tabindex="0"><div id="diff"></div></div>
+    <div class="view" id="view-info" role="tabpanel" aria-labelledby="tab-info" tabindex="0"><div id="raw"></div></div>
   </div>
 </div>
 
-<div id="panel">
+<div id="backdrop"></div>
+<div id="panel" role="dialog" aria-modal="true" aria-labelledby="pTitle" aria-hidden="true">
   <div class="ph">
     <h3 id="pTitle"></h3>
-    <button class="btn" id="pClose">&#10005;</button>
+    <button class="btn" id="pClose" aria-label="Close details">&#10005;</button>
   </div>
   <div class="pb" id="pBody"></div>
 </div>
+
+<div id="busy" role="status" aria-live="polite"></div>
+<div id="toast" role="alert" aria-live="assertive"></div>
 
 <script>
 "use strict";
@@ -209,7 +258,9 @@ tbody tr:hover{background:var(--bg2)}
  * 1. Parsers: PHP serialize(), PHP array literal, JSON, gzip
  * ================================================================== */
 
-function phpUnserialize(str){
+/* `byteChars` says one JS char == one byte (latin-1 decoded payload), which is
+   how we survive serialize() data carrying non-UTF-8 binary strings. */
+function phpUnserialize(str, byteChars){
   var i = 0;
   function fail(m){ throw new Error("unserialize: " + m + " at offset " + i); }
   function eat(ch){ if (str[i] !== ch) fail('expected "' + ch + '" but got "' + (str[i] || "EOF") + '"'); i++; }
@@ -220,6 +271,7 @@ function phpUnserialize(str){
   }
   /* serialize() string lengths are BYTE counts: walk code points, count UTF-8 bytes. */
   function readBytes(len){
+    if (byteChars){ var s1 = str.substr(i, len); i += len; return s1; }
     var start = i, bytes = 0;
     while (bytes < len && i < str.length){
       var cp = str.codePointAt(i);
@@ -251,7 +303,7 @@ function phpUnserialize(str){
         i += 2;
         var cnt = parseInt(upto(":"), 10);
         eat("{");
-        var out = {};
+        var out = Object.create(null); /* a "__proto__" key must stay a key */
         for (var k = 0; k < cnt; k++){ var key = value(); out[key] = value(); }
         eat("}");
         return out;
@@ -262,15 +314,23 @@ function phpUnserialize(str){
         eat('"'); readBytes(nl); eat('"'); eat(":");
         var pc = parseInt(upto(":"), 10);
         eat("{");
-        var obj = {};
+        var obj = Object.create(null);
         for (var p = 0; p < pc; p++){
           var pk = String(value());
-          pk = pk.replace(/^ [^ ]* /, ""); /* strip private/protected mangling */
+          pk = pk.replace(/^\x00[^\x00]*\x00/, ""); /* strip private/protected mangling */
           obj[pk] = value();
         }
         eat("}");
         return obj;
       }
+      case "E": { /* enum: E:len:"Enum:CASE"; -> keep the case name */
+        i += 2;
+        var el = parseInt(upto(":"), 10);
+        eat('"'); var es = readBytes(el); eat('"'); eat(";");
+        return es;
+      }
+      case "r": case "R": fail("back-references (r:/R:) are not supported; re-dump the profile with serialize() of a plain array");
+      case "C": fail("custom-serialized objects (C:) are not supported; this viewer only reads plain arrays/objects");
       default: fail('unknown type "' + (str[i] || "EOF") + '"');
     }
   }
@@ -301,7 +361,7 @@ function phpLiteralParse(src){
     fail("unterminated string");
   }
   function arr(close){
-    var out = {}, auto = 0;
+    var out = Object.create(null), auto = 0;
     for (;;){
       ws();
       if (s[i] === close){ i++; return out; }
@@ -330,25 +390,38 @@ function phpLiteralParse(src){
   return value();
 }
 
-async function maybeGunzip(buf){
-  var u8 = new Uint8Array(buf);
-  if (u8.length > 2 && u8[0] === 0x1f && u8[1] === 0x8b){
-    if (typeof DecompressionStream !== "function") throw new Error("This looks like a gzip file, but this browser has no DecompressionStream.");
-    var stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
-    return await new Response(stream).arrayBuffer();
-  }
-  return buf;
+async function inflate(buf, format){
+  var stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream(format));
+  return await new Response(stream).arrayBuffer();
 }
 
-function parseProfileText(text){
+/* gzip (1f 8b) and raw zlib (78 01/5e/9c/da), which is what several xhprof
+   extensions and XHGui setups write. */
+async function maybeDecompress(buf){
+  var u8 = new Uint8Array(buf), fmts = null;
+  if (u8.length < 2) return buf;
+  if (u8[0] === 0x1f && u8[1] === 0x8b) fmts = ["gzip"];
+  else if (u8[0] === 0x78 && [0x01, 0x5e, 0x9c, 0xda].indexOf(u8[1]) >= 0) fmts = ["deflate", "deflate-raw"];
+  if (!fmts) return buf;
+  if (typeof DecompressionStream !== "function")
+    throw new Error("This file is compressed (" + fmts[0] + "), but this browser has no DecompressionStream.");
+  var last = null;
+  for (var k = 0; k < fmts.length; k++){
+    try { return await inflate(buf, fmts[k]); } catch (e){ last = e; }
+  }
+  throw new Error("Could not decompress this file as " + fmts.join(" or ") + ": " + (last && last.message));
+}
+
+function parseProfileText(text, byteChars){
   var t = String(text).replace(/^\uFEFF/, "").trim();
   if (!t) throw new Error("Empty input.");
-  if (/^[aOsibdN]:/.test(t)) return { data: phpUnserialize(t), format: "PHP serialize()" };
+  var unser = function(s){ return phpUnserialize(s, byteChars); };
+  if (/^[aOsibdN]:/.test(t)) return { data: unser(t), format: "PHP serialize()" };
   if (t[0] === "{" || t[0] === "[") {
     try { return { data: JSON.parse(t), format: "JSON" }; } catch (e){ /* maybe a PHP short-array literal */ }
   }
   if (/^(<\?php|return|array\s*\(|\[)/i.test(t)) return { data: phpLiteralParse(t), format: "PHP array literal" };
-  var tries = [[phpUnserialize, "PHP serialize()"], [JSON.parse, "JSON"], [phpLiteralParse, "PHP array literal"]];
+  var tries = [[unser, "PHP serialize()"], [JSON.parse, "JSON"], [phpLiteralParse, "PHP array literal"]];
   for (var k = 0; k < tries.length; k++){
     try { return { data: tries[k][0](t), format: tries[k][1] }; } catch (e){ /* next */ }
   }
@@ -356,6 +429,8 @@ function parseProfileText(text){
 }
 
 /* Locate the actual edge map inside whatever wrapper we were handed. */
+function hasOwn(o, k){ return Object.prototype.hasOwnProperty.call(o, k); }
+
 function extractProfile(data){
   function looksLikeProfile(o){
     if (!o || typeof o !== "object") return false;
@@ -364,7 +439,8 @@ function extractProfile(data){
     for (var n = 0; n < Math.min(keys.length, 80); n++){
       var k = keys[n], v = o[k];
       if (k.indexOf("==>") >= 0 || k === "main()") return true;
-      if (v && typeof v === "object" && ("wt" in v || "ct" in v || "cpu" in v || "samples" in v)) return true;
+      /* own properties only: "constructor" in {} is true for any plain object */
+      if (v && typeof v === "object" && (hasOwn(v, "wt") || hasOwn(v, "ct") || hasOwn(v, "cpu") || hasOwn(v, "samples"))) return true;
     }
     return false;
   }
@@ -373,7 +449,7 @@ function extractProfile(data){
   var wrappers = ["profile", "profiles", "prof", "data", "0"];
   for (var w = 0; w < wrappers.length; w++){
     var key = wrappers[w];
-    if (data && typeof data === "object" && looksLikeProfile(data[key])){
+    if (data && typeof data === "object" && hasOwn(data, key) && looksLikeProfile(data[key])){
       var meta = {};
       Object.keys(data).forEach(function(k){ if (k !== key) meta[k] = data[k]; });
       return { profile: data[key], meta: Object.keys(meta).length ? meta : null };
@@ -409,7 +485,7 @@ var METRIC_META = {
 var METRIC_ORDER = ["wt", "cpu", "utime", "stime", "mu", "pmu", "samples"];
 
 function buildModel(profile){
-  var found = {}, edges = [];
+  var found = Object.create(null), edges = [];
   Object.keys(profile).forEach(function(rawKey){
     var v = profile[rawKey];
     if (!v || typeof v !== "object") return;
@@ -417,7 +493,7 @@ function buildModel(profile){
     var sep = key.indexOf("==>");
     var parent = sep >= 0 ? key.slice(0, sep) : null;
     var child = sep >= 0 ? key.slice(sep + 3) : key;
-    var m = {};
+    var m = Object.create(null);
     Object.keys(v).forEach(function(k){
       var n = typeof v[k] === "number" ? v[k] : parseFloat(v[k]);
       if (isFinite(n)){ m[k] = n; if (k !== "ct") found[k] = true; }
@@ -435,7 +511,8 @@ function buildModel(profile){
   function get(name){
     var f = funcs.get(name);
     if (!f){
-      f = { name: name, ct: 0, incl: {}, kids: {}, excl: {}, parents: [], children: [] };
+      f = { name: name, ct: 0, incl: Object.create(null), kids: Object.create(null),
+            excl: Object.create(null), parents: [], children: [] };
       metricList.forEach(function(m){ f.incl[m] = 0; f.kids[m] = 0; f.excl[m] = 0; });
       funcs.set(name, f);
     }
@@ -465,17 +542,18 @@ function buildModel(profile){
   });
 
   /* roots: main() first, then any function that is never called by anybody */
-  var roots = [];
-  if (funcs.has("main()")) roots.push("main()");
+  var roots = [], rootSet = new Set();
+  function addRoot(n){ if (!rootSet.has(n)){ rootSet.add(n); roots.push(n); } }
+  if (funcs.has("main()")) addRoot("main()");
   funcs.forEach(function(f){
-    if (roots.indexOf(f.name) < 0 && f.parents.every(function(e){ return e.parent === null; })) roots.push(f.name);
+    if (f.parents.every(function(e){ return e.parent === null; })) addRoot(f.name);
   });
   if (!roots.length){
     var best = Array.from(funcs.values()).sort(function(a, b){ return (b.incl[metricList[0]] || 0) - (a.incl[metricList[0]] || 0); })[0];
-    roots.push(best.name);
+    addRoot(best.name);
   }
 
-  var totals = {}, totalCt = 0;
+  var totals = Object.create(null), totalCt = 0;
   metricList.forEach(function(m){
     var t = roots.reduce(function(s, r){ return s + (funcs.get(r).incl[m] || 0); }, 0);
     if (!t) funcs.forEach(function(f){ t += f.excl[m] || 0; });
@@ -483,7 +561,8 @@ function buildModel(profile){
   });
   funcs.forEach(function(f){ totalCt += f.ct; });
 
-  return { funcs: funcs, edges: edges, metricList: metricList, roots: roots, totals: totals, totalCt: totalCt };
+  return { funcs: funcs, edges: edges, metricList: metricList, roots: roots,
+           rootSet: rootSet, totals: totals, totalCt: totalCt };
 }
 
 /* ================================================================== *
@@ -525,43 +604,135 @@ function shortName(n){ return n.length > 70 ? n.slice(0, 34) + "…" + n.slice(-
 
 function $(s){ return document.querySelector(s); }
 
-var M = null;
+var M = null;                                    /* current profile      */
+var B = null;                                    /* diff baseline or null */
 var META = { file: "", format: "", meta: null };
+var BMETA = null;
 var metric = "wt";
 var sortKey = "excl", sortDir = -1;
 var rowLimit = 250;
 var flameRoot = null, flamePath = [];
+var activeView = "flat";
+var filterBad = false;
 
 function isFlameable(m){ var u = unitOf(m); return u === "us" || u === "count"; }
 
-/* ---------------- loading ---------------- */
+/* Views render on demand. Rebuilding the flame graph (up to 20k frames) and
+   the insights for tabs nobody is looking at was by far the biggest cost. */
+var VIEWS = ["flat", "tree", "flame", "insight", "diff", "info"];
+var dirty = { flat: true, tree: true, flame: true, insight: true, diff: true, info: true };
 
-async function loadFile(file){
-  if (!file) return;
-  try {
-    var buf = await maybeGunzip(await file.arrayBuffer());
-    load(new TextDecoder("utf-8").decode(buf), file.name);
-  } catch (e){ showError(e); }
+function renderer(v){
+  return { flat: renderFlat, tree: renderTree, flame: renderFlame,
+           insight: renderInsight, diff: renderDiff, info: renderInfo }[v];
+}
+function invalidate(views){
+  (views || VIEWS).forEach(function(v){ dirty[v] = true; });
+  fCache = null;
+  if (M) renderSummary();
+  renderActive();
+  updateCounts();
+}
+function renderActive(){
+  if (!M || !dirty[activeView]) return;
+  dirty[activeView] = false;
+  renderer(activeView)();
 }
 
-function load(text, name){
+/* ---------------- transient status ---------------- */
+
+function busy(msg){
+  var el = $("#busy");
+  el.textContent = msg || "";
+  el.classList.toggle("on", !!msg);
+}
+
+var toastTimer = null;
+function toast(msg, good){
+  var el = $("#toast");
+  el.textContent = msg;
+  el.style.borderColor = el.style.borderLeftColor = good ? "var(--ok)" : "var(--bad)";
+  el.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove("on"); }, good ? 2600 : 8000);
+}
+
+/* Let the browser paint the "parsing" banner before we block the thread —
+   but never wait on a frame that may never come (hidden tab, headless). */
+function nextTick(){
+  return new Promise(function(r){
+    var done = false;
+    var fin = function(){ if (!done){ done = true; r(); } };
+    requestAnimationFrame(function(){ setTimeout(fin, 0); });
+    setTimeout(fin, 50);
+  });
+}
+
+/* ---------------- loading ---------------- */
+
+async function loadFile(file, asBaseline){
+  if (!file) return;
+  busy("Reading " + file.name + "\u2026");
   try {
-    var parsed = parseProfileText(text);
+    var buf = await maybeDecompress(await file.arrayBuffer());
+    var text = new TextDecoder("utf-8").decode(buf);
+    var byteChars = false;
+    /* Non-UTF-8 bytes inside a serialize() payload become U+FFFD and desync the
+       byte-length walk: re-decode as latin-1, where one char is one byte. */
+    if (text.indexOf("\uFFFD") >= 0 && /^[aOsibdN]:/.test(text.replace(/^\uFEFF/, "").replace(/^\s+/, ""))){
+      text = new TextDecoder("latin1").decode(buf);
+      byteChars = true;
+    }
+    await load(text, file.name, { byteChars: byteChars, baseline: asBaseline });
+  } catch (e){ showError(e); }
+  finally { busy(null); }
+}
+
+async function load(text, name, opts){
+  opts = opts || {};
+  busy((opts.baseline ? "Parsing baseline " : "Parsing ") + (name || "profile") + "\u2026");
+  await nextTick();
+  try {
+    var parsed = parseProfileText(text, opts.byteChars);
     var found = extractProfile(parsed.data);
-    M = buildModel(found.profile);
-    META = { file: name || "(pasted data)", format: parsed.format, meta: found.meta };
+    var model = buildModel(found.profile);
+    var meta = { file: name || "(pasted data)", format: parsed.format, meta: found.meta };
+
+    if (opts.baseline){
+      B = model; BMETA = meta;
+      $("#baseName").textContent = meta.file;
+      $("#baseChip").hidden = false;
+      $("#tab-diff").hidden = false;
+      invalidate(["diff", "info"]);
+      toast("Baseline loaded: " + meta.file + " \u2014 see the Diff tab.", true);
+      return;
+    }
+
+    M = model; META = meta;
     metric = M.metricList.indexOf("wt") >= 0 ? "wt" : M.metricList[0];
     sortKey = "excl"; sortDir = -1; rowLimit = 250;
     flameRoot = null; flamePath = [];
     boot();
   } catch (e){ showError(e); }
+  finally { busy(null); }
+}
+
+function clearBaseline(){
+  B = null; BMETA = null;
+  $("#baseChip").hidden = true;
+  $("#tab-diff").hidden = true;
+  if (activeView === "diff") selectTab("flat");
+  invalidate(["diff", "info"]);
 }
 
 function showError(e){
-  $("#dropErr").innerHTML = '<div class="err">' + esc(e && e.message ? e.message : String(e)) + "</div>";
+  var msg = e && e.message ? e.message : String(e);
+  if (console && console.error) console.error(e);
+  /* A bad second file must not throw away the profile already on screen. */
+  if (M){ toast(msg); return; }
+  $("#dropErr").innerHTML = '<div class="err">' + esc(msg) + "</div>";
   $("#drop").style.display = "flex";
   $("#app").style.display = "none";
-  if (console && console.error) console.error(e);
 }
 
 function boot(){
@@ -573,18 +744,18 @@ function boot(){
   $("#metric").innerHTML = M.metricList.map(function(m){
     return '<option value="' + esc(m) + '">' + esc(label(m)) + "</option>";
   }).join("");
-  $("#metric").value = metric;
 
   $("#root").innerHTML = M.roots.map(function(r){
     return '<option value="' + esc(r) + '">' + esc(shortName(r)) + "</option>";
   }).join("");
   $("#rootWrap").style.display = M.roots.length > 1 ? "" : "none";
 
-  renderSummary();
-  renderAll();
-}
+  applyHash();                 /* view / metric / sort / filter / root from the URL */
+  $("#metric").value = metric;
 
-function renderAll(){ renderFlat(); renderTree(); renderFlame(); renderInsight(); renderInfo(); }
+  invalidate();                /* also (re)draws the KPI strip */
+  writeHash();
+}
 
 /* ---------------- summary ---------------- */
 
@@ -600,6 +771,9 @@ function renderSummary(){
     }
     kpis.push([name, fmtMetric(v, m)]);
   });
+  if (B && B.metricList.indexOf(metric) >= 0)
+    kpis.push(["\u0394 total " + label(metric).toLowerCase() + " vs baseline",
+               fmtDelta((M.totals[metric] || 0) - (B.totals[metric] || 0), metric)]);
   $("#summary").innerHTML = kpis.map(function(kv){
     return '<div class="kpi"><div class="k">' + esc(kv[0]) + '</div><div class="v">' + esc(kv[1]) + "</div></div>";
   }).join("");
@@ -607,52 +781,79 @@ function renderSummary(){
 
 /* ---------------- flat profile ---------------- */
 
+/* Each column owns its sort key (the "%" columns used to share theirs with the
+   value column, so clicking one flipped the other's direction). */
+var SORT_FIELD = { name: "name", ct: "ct", ctPct: "ct", incl: "incl",
+                   inclPct: "incl", excl: "excl", exclPct: "excl" };
+
+var fCache = null, fCacheKey = "";
+
 function filteredFuncs(){
   var q = $("#q").value.trim();
+  var key = [q, sortKey, sortDir, metric].join("\u0000");
+  if (fCache && fCacheKey === key) return fCache;
+
   var list = Array.from(M.funcs.values());
+  filterBad = false;
   if (q){
     var re = null;
-    try { re = new RegExp(q, "i"); } catch (e){ re = null; }
+    try { re = new RegExp(q, "i"); }
+    catch (e){ re = null; filterBad = true; }   /* half-typed pattern: say so */
     var lower = q.toLowerCase();
     list = list.filter(function(f){ return re ? re.test(f.name) : f.name.toLowerCase().indexOf(lower) >= 0; });
   }
+  var field = SORT_FIELD[sortKey] || "excl";
   function val(f){
-    if (sortKey === "name") return f.name;
-    if (sortKey === "ct") return f.ct;
-    return f[sortKey] ? f[sortKey][metric] : 0;
+    if (field === "name") return f.name;
+    if (field === "ct") return f.ct;
+    return f[field] ? f[field][metric] : 0;
   }
   list.sort(function(a, b){
     var x = val(a), y = val(b);
     if (typeof x === "string") return sortDir * x.localeCompare(y);
     return sortDir * (x - y);
   });
+  fCacheKey = key; fCache = list;
   return list;
 }
 
+function updateCounts(list, shownCount){
+  if (!M) return;
+  if (!list) list = filteredFuncs();
+  if (shownCount === undefined) shownCount = Math.min(rowLimit, list.length);
+  $("#q").classList.toggle("bad", filterBad);
+  $("#counts").textContent = (filterBad ? "invalid regex \u2014 matching as plain text \u00b7 " : "")
+    + shownCount + " / " + list.length + " functions";
+}
+
 var COLS = [
-  { k: "name",  t: "Function" },
-  { k: "ct",    t: "Calls" },
-  { k: "ct",    t: "Calls %",  pctOf: "ct" },
-  { k: "incl",  t: "Incl" },
-  { k: "incl",  t: "Incl %",   pctOf: "incl" },
-  { k: "excl",  t: "Excl" },
-  { k: "excl",  t: "Excl %",   pctOf: "excl" },
-  { k: "",      t: "" }
+  { sk: "name",    k: "name", t: "Function" },
+  { sk: "ct",      k: "ct",   t: "Calls" },
+  { sk: "ctPct",   k: "ct",   t: "Calls %" },
+  { sk: "incl",    k: "incl", t: "Incl" },
+  { sk: "inclPct", k: "incl", t: "Incl %" },
+  { sk: "excl",    k: "excl", t: "Excl" },
+  { sk: "exclPct", k: "excl", t: "Excl %" },
+  { t: "" }
 ];
 
 function renderFlat(){
   $("#flat thead").innerHTML = "<tr>" + COLS.map(function(c){
     var t = (c.t === "Incl" || c.t === "Excl") ? c.t + " " + label(metric) : c.t;
-    var on = c.k && c.k === sortKey && !c.pctOf; /* arrow on the value column only */
-    return "<th" + (c.k ? ' data-k="' + c.k + '"' : "") + ">" + esc(t)
-      + (on ? ' <span class="ar">' + (sortDir < 0 ? "▼" : "▲") + "</span>" : "") + "</th>";
+    var on = c.sk === sortKey;
+    var attrs = c.sk ? ' data-k="' + c.sk + '" tabindex="0" role="button" aria-sort="'
+      + (on ? (sortDir < 0 ? "descending" : "ascending") : "none") + '"' : "";
+    return "<th" + attrs + ">" + esc(t)
+      + (on ? ' <span class="ar" aria-hidden="true">' + (sortDir < 0 ? "▼" : "▲") + "</span>" : "") + "</th>";
   }).join("") + "</tr>";
 
   var list = filteredFuncs();
   var total = M.totals[metric] || 1;
   var shown = list.slice(0, rowLimit);
+  /* Scale the bars against the whole filtered set, so "Show more" does not
+     re-calibrate the rows already on screen. */
   var maxExcl = 1;
-  shown.forEach(function(f){ maxExcl = Math.max(maxExcl, Math.abs(f.excl[metric])); });
+  list.forEach(function(f){ maxExcl = Math.max(maxExcl, Math.abs(f.excl[metric])); });
 
   $("#flat tbody").innerHTML = shown.map(function(f){
     var w = Math.min(100, Math.abs(f.excl[metric]) / maxExcl * 100);
@@ -668,12 +869,10 @@ function renderFlat(){
       + "</tr>";
   }).join("");
 
-  $("#counts").textContent = shown.length + " / " + list.length + " functions";
+  updateCounts(list, shown.length);
   $("#more").innerHTML = list.length > rowLimit
     ? '<button class="btn" id="moreBtn">Show ' + Math.min(500, list.length - rowLimit) + " more…</button>"
     : "";
-  var mb = $("#moreBtn");
-  if (mb) mb.onclick = function(){ rowLimit += 500; renderFlat(); };
 }
 
 /* ---------------- function detail panel ---------------- */
@@ -719,11 +918,33 @@ function openFunc(name){
   var body = $("#pBody");
   body.innerHTML = html;
   body.scrollTop = 0;
-  body.querySelectorAll("tr[data-f]").forEach(function(tr){
-    tr.onclick = function(){ openFunc(tr.dataset.f); };
-  });
-  $("#panel").classList.add("on");
+  openPanel();
 }
+
+/* ---------------- detail panel: dialog mechanics ---------------- */
+
+var panelReturn = null;
+
+function openPanel(){
+  var p = $("#panel");
+  if (!p.classList.contains("on")) panelReturn = document.activeElement;
+  p.classList.add("on");
+  p.setAttribute("aria-hidden", "false");
+  $("#backdrop").classList.add("on");
+  $("#pClose").focus();
+}
+
+function closePanel(){
+  var p = $("#panel");
+  if (!p.classList.contains("on")) return;
+  p.classList.remove("on");
+  p.setAttribute("aria-hidden", "true");
+  $("#backdrop").classList.remove("on");
+  if (panelReturn && panelReturn.focus) panelReturn.focus();
+  panelReturn = null;
+}
+
+function panelOpen(){ return $("#panel").classList.contains("on"); }
 
 /* ---------------- call tree (aggregated, edge-weighted) ---------------- */
 
@@ -758,8 +979,10 @@ function treeRow(name, value, ct, total, kidsCount, open, recursive){
     + '<span class="tc">' + fmtInt(ct) + " ×</span>"
     + '<span class="tg">' + (recursive ? "" : '<span class="bar"><i style="width:' + w.toFixed(2) + '%"></i></span>') + "</span>"
     + '<span class="nm" title="' + esc(name) + '">' + esc(shortName(name)) + (recursive ? " (recursive)" : "") + "</span>";
-  row.querySelector(".nm").onclick = function(){ openFunc(name); };
-  return row;
+  row.dataset.f = name;
+  row.setAttribute("role", "treeitem");
+  if (kidsCount && !recursive) row.setAttribute("aria-expanded", open ? "true" : "false");
+  return row;                       /* name clicks are delegated on #tree */
 }
 
 function treeNode(name, value, ct, path, total, open){
@@ -793,12 +1016,14 @@ function treeNode(name, value, ct, path, total, open){
   if (open) build();
 
   var toggle = row.querySelector(".tk");
-  toggle.onclick = function(){
+  toggle.setAttribute("aria-label", "Expand or collapse " + name);
+  toggle.onclick = function(){        /* keeps its own closure over build() */
     if (!kidsCount) return;
     build();
     var visible = kids.style.display !== "none";
     kids.style.display = visible ? "none" : "";
     toggle.textContent = visible ? "▸" : "▾";
+    row.setAttribute("aria-expanded", visible ? "false" : "true");
   };
   return wrap;
 }
@@ -834,8 +1059,10 @@ function hueOf(name){
   return h;
 }
 
+var flameCur = null, flameCrumbs = [];
+
 function renderFlame(){
-  var rootName = flameRoot || $("#root").value || M.roots[0];
+  var rootName = flameCur = flameRoot || $("#root").value || M.roots[0];
   var flame = $("#flame");
   if (!isFlameable(metric)){
     $("#crumb").innerHTML = "";
@@ -867,31 +1094,14 @@ function renderFlame(){
     });
   })(tree, 0, 100);
 
+  /* One delegated listener on #flame instead of up to MAX_FRAMES closures. */
   flame.innerHTML = out.join("");
   flame.style.height = ((maxDepth + 1) * ROW_H + 4) + "px";
-  flame.querySelectorAll(".fr").forEach(function(el){
-    el.onclick = function(ev){
-      var n = el.dataset.f;
-      if (ev.altKey || ev.metaKey || ev.ctrlKey){ openFunc(n); return; }
-      if (n === rootName) return;
-      flamePath.push(rootName);
-      flameRoot = n;
-      renderFlame();
-    };
-  });
 
-  var crumbs = flamePath.concat([rootName]);
+  flameCrumbs = flamePath.concat([rootName]);
   $("#crumb").innerHTML = '<button data-i="-1">⌂ reset</button>'
-    + crumbs.map(function(c, i){ return '<button data-i="' + i + '">' + esc(shortName(c)) + "</button>"; }).join(" › ")
+    + flameCrumbs.map(function(c, i){ return '<button data-i="' + i + '">' + esc(shortName(c)) + "</button>"; }).join(" › ")
     + ' <span class="hint">click a frame to zoom &middot; alt/⌘-click for details</span>';
-  $("#crumb").querySelectorAll("button").forEach(function(b){
-    b.onclick = function(){
-      var i = +b.dataset.i;
-      if (i < 0){ flameRoot = null; flamePath = []; }
-      else { flameRoot = crumbs[i]; flamePath = crumbs.slice(0, i); }
-      renderFlame();
-    };
-  });
 }
 
 /* ---------------- insights: description, blockers, suggestions ---------------- */
@@ -903,6 +1113,9 @@ function analysisMetric(){
   for (var i = 0; i < pref.length; i++) if (M.metricList.indexOf(pref[i]) >= 0) return pref[i];
   return M.metricList[0];
 }
+
+var SEV_ORDER = ["hi", "med", "low"];
+function bySev(a, b){ return SEV_ORDER.indexOf(a.sev) - SEV_ORDER.indexOf(b.sev) || b.score - a.score; }
 
 /* name -> pattern rules. Each fires on the functions it matches, once. */
 var SUGGESTION_RULES = [
@@ -995,6 +1208,7 @@ function buildInsights(){
   var total = am === "ct" ? (M.totalCt || 0) : (M.totals[am] || 0);
   if (!(total > 0) || total < maxSelf) total = Math.max(sumPos, maxSelf) || 1;
   var hasCpu = M.metricList.indexOf("cpu") >= 0 && M.metricList.indexOf("wt") >= 0;
+  var cpuRatio = hasCpu ? 100 * (M.totals.cpu || 0) / (M.totals.wt || 1) : 0;
   var funcs = funcsAll;
   var pctOf = function(v){ return 100 * v / total; };
   /* Exclusive values can be negative (memory deltas, or call counts which do not
@@ -1025,7 +1239,6 @@ function buildInsights(){
     + (need80 > 40 ? " — expect death-by-a-thousand-cuts rather than one fixable hotspot." : "."));
 
   if (hasCpu){
-    var cpuRatio = 100 * (M.totals.cpu || 0) / (M.totals.wt || 1);
     if (cpuRatio < 55) desc.push("Only <b>" + cpuRatio.toFixed(0) + "%</b> of the wall time is CPU: the request is <b>I/O bound</b> — most of it is spent waiting on the database, the network or the filesystem.");
     else if (cpuRatio > 85) desc.push("<b>" + cpuRatio.toFixed(0) + "%</b> of the wall time is CPU: the request is <b>CPU bound</b>, so look for algorithmic work rather than waits.");
     else desc.push("<b>" + cpuRatio.toFixed(0) + "%</b> of the wall time is CPU — a mix of computation and waiting.");
@@ -1044,16 +1257,16 @@ function buildInsights(){
       + " each: at this volume the PHP call overhead itself is part of the bill.");
 
   /* ---- blocking points ---- */
-  var blockersBy = {};
+  var blockersBy = Object.create(null);
   function blocker(f, sev, reason){
     var b = blockersBy[f.name];
     if (!b) b = blockersBy[f.name] = { fn: f, sev: sev, reasons: [], score: 0 };
-    if (["hi", "med", "low"].indexOf(sev) < ["hi", "med", "low"].indexOf(b.sev)) b.sev = sev;
+    if (SEV_ORDER.indexOf(sev) < SEV_ORDER.indexOf(b.sev)) b.sev = sev;
     b.reasons.push(reason);
     b.score = Math.max(b.score, pctOf(f.excl[am]), pctOf(f.incl[am]) / 2);
   }
 
-  var isRoot = function(f){ return M.roots.indexOf(f.name) >= 0; };
+  var isRoot = function(f){ return M.rootSet.has(f.name); };
 
   bySelf.forEach(function(f){
     var p = pctOf(f.excl[am]);
@@ -1121,10 +1334,7 @@ function buildInsights(){
   }
 
   var blockers = Object.keys(blockersBy).map(function(k){ return blockersBy[k]; })
-    .sort(function(a, b){
-      var o = ["hi", "med", "low"];
-      return o.indexOf(a.sev) - o.indexOf(b.sev) || b.score - a.score;
-    }).slice(0, 12);
+    .sort(bySev).slice(0, 12);
 
   /* ---- suggestions ---- */
   var sugg = [];
@@ -1158,18 +1368,15 @@ function buildInsights(){
   if (M.totalCt > 500000)
     sugg.push({ sev: "med", score: 6, title: "Very high call volume", evidence: fmtInt(M.totalCt) + " calls in one run",
       fix: "Reduce the amount of data flowing through the loop (fewer rows, fewer objects) rather than the cost per call — and make sure profiling overhead is not inflating what you read here.", fns: [] });
-  if (hasCpu && 100 * (M.totals.cpu || 0) / (M.totals.wt || 1) < 55)
-    sugg.push({ sev: "hi", score: 30, title: "The request mostly waits", evidence: (100 * (M.totals.cpu || 0) / (M.totals.wt || 1)).toFixed(0) + "% of wall time is CPU",
+  if (hasCpu && cpuRatio < 55)
+    sugg.push({ sev: "hi", score: 30, title: "The request mostly waits", evidence: cpuRatio.toFixed(0) + "% of wall time is CPU",
       fix: "Start with the off-CPU blockers below/above: query count and latency, external HTTP calls, filesystem access. Faster PHP code will barely help here.", fns: [] });
   if (M.roots.length > 3)
     sugg.push({ sev: "low", score: 1, title: M.roots.length + " entry points in this profile",
       evidence: "roots: " + M.roots.slice(0, 4).map(shortName).join(", ") + (M.roots.length > 4 ? ", …" : ""),
       fix: "Several call graphs are merged here (aggregated runs, or a profiler started late). Percentages are relative to their sum — pick a root in the toolbar to read one graph at a time.", fns: [] });
 
-  sugg.sort(function(a, b){
-    var o = ["hi", "med", "low"];
-    return o.indexOf(a.sev) - o.indexOf(b.sev) || b.score - a.score;
-  });
+  sugg.sort(bySev);
 
   return { desc: desc, blockers: blockers, sugg: sugg, am: am };
 }
@@ -1217,10 +1424,139 @@ function renderInsight(){
     + esc(label(r.am).toLowerCase()) + '. Confirm each one in the flat profile or the call tree before changing code.</p>';
   html += "</div>";
 
-  box.innerHTML = html;
-  box.querySelectorAll("[data-f]").forEach(function(el){
-    el.onclick = function(){ openFunc(el.dataset.f); };
+  box.innerHTML = html;             /* clicks are delegated on #insight */
+}
+
+/* ---------------- diff against a baseline ---------------- */
+
+var dSortKey = "dExcl", dSortDir = -1;
+
+var DIFF_COLS = [
+  { dk: "name",  t: "Function" },
+  { dk: "dCt",   t: "Δ calls" },
+  { dk: "dIncl", t: "Δ incl" },
+  { dk: "dExcl", t: "Δ excl" },
+  { dk: "rExcl", t: "Δ excl %" },
+  { dk: "excl",  t: "Excl now" }
+];
+
+function fmtDelta(v, m){
+  var s = v > 0 ? "+" : v < 0 ? "−" : "";
+  return s + fmtMetric(Math.abs(v), m);
+}
+function fmtDeltaInt(v){
+  return (v > 0 ? "+" : v < 0 ? "−" : "") + fmtInt(Math.abs(v));
+}
+function fmtRatio(r){
+  if (r === Infinity) return "new";
+  if (r === -Infinity) return "gone";
+  return (r > 0 ? "+" : "") + r.toFixed(1) + "%";
+}
+function sortable(v){ return isFinite(v) ? v : (v > 0 ? 1e18 : -1e18); }
+
+/* Union of both profiles, deltas on the active metric. The toolbar filter
+   applies here too, so the diff can be narrowed the same way. */
+function diffRows(){
+  var q = $("#q").value.trim(), re = null;
+  if (q){ try { re = new RegExp(q, "i"); } catch (e){ re = null; } }
+  var lower = q.toLowerCase();
+
+  var names = new Set();
+  M.funcs.forEach(function(f){ names.add(f.name); });
+  B.funcs.forEach(function(f){ names.add(f.name); });
+
+  var rows = [];
+  names.forEach(function(n){
+    if (q && !(re ? re.test(n) : n.toLowerCase().indexOf(lower) >= 0)) return;
+    var a = M.funcs.get(n), b = B.funcs.get(n);
+    var eA = a ? (a.excl[metric] || 0) : 0, eB = b ? (b.excl[metric] || 0) : 0;
+    var iA = a ? (a.incl[metric] || 0) : 0, iB = b ? (b.incl[metric] || 0) : 0;
+    rows.push({
+      name: n, cur: !!a, base: !!b,
+      excl: eA, dExcl: eA - eB, dIncl: iA - iB,
+      dCt: (a ? a.ct : 0) - (b ? b.ct : 0),
+      rExcl: eB ? 100 * (eA - eB) / Math.abs(eB) : (eA ? Infinity : 0)
+    });
   });
+
+  rows.sort(function(x, y){
+    if (dSortKey === "name") return dSortDir * x.name.localeCompare(y.name);
+    return dSortDir * (sortable(x[dSortKey]) - sortable(y[dSortKey]));
+  });
+  return rows;
+}
+
+function renderDiff(){
+  var box = $("#diff");
+  if (!B){
+    box.innerHTML = '<div class="note">No baseline loaded. Hit <b>Compare…</b> in the header '
+      + "(or shift-drop a file, or press <code>c</code>) to load a second profile, and this tab "
+      + "shows what moved between the two — per function, on the active metric.</div>";
+    return;
+  }
+  if (B.metricList.indexOf(metric) < 0){
+    box.innerHTML = '<div class="note">The baseline <code>' + esc(BMETA.file) + "</code> carries no <code>"
+      + esc(metric) + "</code> metric (it has " + esc(B.metricList.join(", "))
+      + "). Pick a metric both profiles share.</div>";
+    return;
+  }
+
+  var rows = diffRows();
+  var tA = M.totals[metric] || 0, tB = B.totals[metric] || 0;
+  var dT = tA - tB;
+  var worse = rows.filter(function(r){ return r.dExcl > 0; }).length;
+  var better = rows.filter(function(r){ return r.dExcl < 0; }).length;
+
+  var head = '<div class="note"><b>' + esc(META.file) + "</b> vs baseline <b>" + esc(BMETA.file) + "</b>"
+    + " · total " + esc(label(metric).toLowerCase()) + " " + esc(fmtMetric(tB, metric))
+    + " → " + esc(fmtMetric(tA, metric))
+    + ' <span class="' + (dT > 0 ? "up" : "down") + '">(' + esc(fmtDelta(dT, metric))
+    + (tB ? ", " + fmtRatio(100 * dT / Math.abs(tB)) : "") + ")</span>"
+    + " · " + fmtInt(worse) + " functions slower, " + fmtInt(better) + " faster"
+    + ", calls " + esc(fmtDeltaInt(M.totalCt - B.totalCt)) + ".</div>";
+
+  var shown = rows.slice(0, rowLimit);
+  var thead = "<tr>" + DIFF_COLS.map(function(c){
+    var t = c.t === "Δ incl" ? "Δ incl " + label(metric)
+          : c.t === "Δ excl" ? "Δ excl " + label(metric)
+          : c.t === "Excl now" ? "Excl " + label(metric) + " now" : c.t;
+    var on = c.dk === dSortKey;
+    return '<th data-dk="' + c.dk + '" tabindex="0" role="button" aria-sort="'
+      + (on ? (dSortDir < 0 ? "descending" : "ascending") : "none") + '">' + esc(t)
+      + (on ? ' <span class="ar" aria-hidden="true">' + (dSortDir < 0 ? "▼" : "▲") + "</span>" : "")
+      + "</th>";
+  }).join("") + "</tr>";
+
+  var body = shown.map(function(r){
+    var cls = r.dExcl > 0 ? "up" : r.dExcl < 0 ? "down" : "";
+    var tag = !r.base ? '<span class="tag new">new</span>'
+            : !r.cur ? '<span class="tag gone">gone</span>' : "";
+    return "<tr" + (r.cur ? ' data-f="' + esc(r.name) + '"' : ' style="cursor:default"') + ">"
+      + '<td title="' + esc(r.name) + '">' + esc(shortName(r.name)) + tag + "</td>"
+      + "<td>" + esc(fmtDeltaInt(r.dCt)) + "</td>"
+      + "<td>" + esc(fmtDelta(r.dIncl, metric)) + "</td>"
+      + '<td class="' + cls + '">' + esc(fmtDelta(r.dExcl, metric)) + "</td>"
+      + '<td class="pct ' + cls + '">' + esc(fmtRatio(r.rExcl)) + "</td>"
+      + "<td>" + esc(fmtMetric(r.excl, metric)) + "</td></tr>";
+  }).join("");
+
+  box.innerHTML = head + "<table><thead>" + thead + "</thead><tbody>" + body + "</tbody></table>"
+    + (rows.length > shown.length
+        ? '<div class="more">' + fmtInt(rows.length - shown.length)
+          + " more rows — narrow the filter, or use Export CSV for the whole diff.</div>"
+        : "");
+}
+
+function exportDiffCsv(){
+  var rows = [["function", "in_current", "in_baseline", "calls_delta",
+               "incl_" + metric + "_delta", "excl_" + metric + "_delta",
+               "excl_" + metric + "_now", "excl_pct_change"]];
+  diffRows().forEach(function(r){
+    rows.push([r.name, r.cur ? 1 : 0, r.base ? 1 : 0, r.dCt, r.dIncl, r.dExcl, r.excl,
+               isFinite(r.rExcl) ? r.rExcl.toFixed(2) : ""]);
+  });
+  download(fileStem() + "-vs-" + (BMETA.file || "baseline").replace(/\.[^.]*$/, "") + "-" + metric + "-diff.csv",
+           csvText(rows));
 }
 
 /* ---------------- info tab ---------------- */
@@ -1229,11 +1565,19 @@ function renderInfo(){
   var lines = [];
   lines.push("File:      " + META.file);
   lines.push("Format:    " + META.format);
+  if (BMETA) lines.push("Baseline:  " + BMETA.file + "  (" + BMETA.format + ")");
   lines.push("Metrics:   " + M.metricList.join(", "));
   lines.push("Roots:     " + M.roots.join(", "));
   lines.push("Functions: " + M.funcs.size + "    Call edges: " + M.edges.length + "    Calls: " + fmtInt(M.totalCt));
   M.metricList.forEach(function(m){ lines.push("Total " + (m + "      ").slice(0, 8) + fmtMetric(M.totals[m], m)); });
   if (META.meta) lines.push("\nMetadata:\n" + JSON.stringify(META.meta, null, 2));
+  lines.push("\nKeyboard\n"
+    + "\u00b7 1\u20269 switch tabs   /  focus the filter   Esc close the panel / clear the filter\n"
+    + "\u00b7 t theme   c load a comparison baseline   e export CSV\n"
+    + "\u00b7 In the flame graph, alt/\u2318-click a frame opens its details instead of zooming.\n"
+    + "\u00b7 Shift-drop a second file to load it as the diff baseline.\n"
+    + "\u00b7 The URL fragment carries view/metric/sort/filter/root \u2014 copy it to share a view.\n"
+    + "\u00b7 Open this file with ?selftest=1 to run the parser/model test suite.");
   lines.push("\nHow to read this\n"
     + "· Inclusive = time/memory spent in the function AND everything it calls.\n"
     + "· Exclusive (self)  = inclusive minus the cost of its callees. Sort by this to find hot spots.\n"
@@ -1248,80 +1592,297 @@ function renderInfo(){
 
 /* ---------------- CSV export ---------------- */
 
-function exportCsv(){
-  var total = M.totals[metric] || 1;
-  var rows = [["function", "calls", "incl_" + metric, "incl_pct", "excl_" + metric, "excl_pct"]];
-  filteredFuncs().forEach(function(f){
-    rows.push([f.name, f.ct, f.incl[metric], pct(f.incl[metric], total).toFixed(4), f.excl[metric], pct(f.excl[metric], total).toFixed(4)]);
-  });
-  var csv = rows.map(function(r){
-    return r.map(function(c){
-      return /[",\n]/.test(String(c)) ? '"' + String(c).replace(/"/g, '""') + '"' : c;
-    }).join(",");
-  }).join("\n");
+function csvCell(c){
+  var s = String(c);
+  /* Only text can start like a formula; negative numbers are left alone. */
+  if (/^[=+@\t\r]/.test(s)) s = "'" + s;
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function csvText(rows){
+  return rows.map(function(r){ return r.map(csvCell).join(","); }).join("\n");
+}
+
+function download(name, text){
   var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = (META.file || "profile").replace(/\.[^.]*$/, "") + "-" + metric + ".csv";
+  /* BOM: without it Excel mangles non-ASCII function names */
+  a.href = URL.createObjectURL(new Blob(["\uFEFF" + text], { type: "text/csv;charset=utf-8" }));
+  a.download = name;
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
 }
 
-/* ---------------- events ---------------- */
+function fileStem(){ return (META.file || "profile").replace(/\.[^.]*$/, ""); }
 
-document.querySelectorAll(".tab").forEach(function(t){
-  t.onclick = function(){
-    document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === t); });
-    document.querySelectorAll(".view").forEach(function(v){ v.classList.toggle("on", v.id === "view-" + t.dataset.view); });
-  };
+function exportCsv(){
+  if (activeView === "diff" && B) return exportDiffCsv();
+  var total = M.totals[metric] || 1;
+  var rows = [["function", "calls", "calls_pct", "incl_" + metric, "incl_pct", "excl_" + metric, "excl_pct"]];
+  filteredFuncs().forEach(function(f){
+    rows.push([f.name, f.ct, pct(f.ct, M.totalCt).toFixed(4),
+               f.incl[metric], pct(f.incl[metric], total).toFixed(4),
+               f.excl[metric], pct(f.excl[metric], total).toFixed(4)]);
+  });
+  download(fileStem() + "-" + metric + ".csv", csvText(rows));
+}
+
+/* ================================================================== *
+ * 9. URL state (view, metric, sort, filter, root)
+ * ================================================================== */
+
+var hashTimer = null;
+
+function writeHash(){
+  if (!M) return;
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(function(){
+    var p = new URLSearchParams();
+    p.set("v", activeView);
+    p.set("m", metric);
+    p.set("s", sortKey);
+    p.set("d", sortDir < 0 ? "desc" : "asc");
+    var q = $("#q").value.trim();
+    if (q) p.set("q", q);
+    var r = $("#root").value;
+    if (r && r !== M.roots[0]) p.set("r", r);
+    /* file:// browsers may refuse replaceState; the app just keeps working. */
+    try { history.replaceState(null, "", "#" + p.toString()); } catch (e){}
+  }, 200);
+}
+
+function applyHash(){
+  var h = location.hash.replace(/^#/, "");
+  if (!h) return;
+  var p = new URLSearchParams(h);
+  var m = p.get("m");
+  if (m && M.metricList.indexOf(m) >= 0) metric = m;
+  var s = p.get("s");
+  if (s && SORT_FIELD[s]) sortKey = s;
+  if (p.get("d")) sortDir = p.get("d") === "asc" ? 1 : -1;
+  var q = p.get("q");
+  if (q) $("#q").value = q;
+  var r = p.get("r");
+  if (r && M.roots.indexOf(r) >= 0) $("#root").value = r;
+  var v = p.get("v");
+  if (v && VIEWS.indexOf(v) >= 0 && (v !== "diff" || B)) selectTab(v, true);
+}
+
+/* ---------------- tabs ---------------- */
+
+function selectTab(name, silent){
+  if (VIEWS.indexOf(name) < 0) return;
+  activeView = name;
+  document.querySelectorAll(".tab").forEach(function(t){
+    var on = t.dataset.view === name;
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+    t.tabIndex = on ? 0 : -1;
+  });
+  document.querySelectorAll(".view").forEach(function(v){ v.classList.toggle("on", v.id === "view-" + name); });
+  renderActive();
+  if (!silent) writeHash();
+}
+
+function visibleTabs(){
+  return Array.prototype.filter.call(document.querySelectorAll(".tab"), function(t){ return !t.hidden; });
+}
+
+document.querySelector(".tabs").addEventListener("click", function(e){
+  var t = e.target.closest(".tab");
+  if (t) selectTab(t.dataset.view);
 });
+
+document.querySelector(".tabs").addEventListener("keydown", function(e){
+  var tabs = visibleTabs();
+  var i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  var j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1
+        : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
+  if (j < 0) return;
+  e.preventDefault();
+  j = (j + tabs.length) % tabs.length;
+  selectTab(tabs[j].dataset.view);
+  tabs[j].focus();
+});
+
+/* ---------------- flat profile ---------------- */
 
 $("#flat").addEventListener("click", function(e){
   var tr = e.target.closest("tbody tr[data-f]");
   if (tr) openFunc(tr.dataset.f);
 });
+
+function sortBy(k){
+  if (k === sortKey) sortDir = -sortDir;
+  else { sortKey = k; sortDir = SORT_FIELD[k] === "name" ? 1 : -1; }
+  invalidate(["flat"]);
+  writeHash();
+}
+
 $("#flat thead").addEventListener("click", function(e){
   var th = e.target.closest("th[data-k]");
-  if (!th) return;
-  var k = th.dataset.k;
-  if (k === sortKey) sortDir = -sortDir;
-  else { sortKey = k; sortDir = k === "name" ? 1 : -1; }
-  renderFlat();
+  if (th) sortBy(th.dataset.k);
 });
-$("#q").oninput = function(){ rowLimit = 250; renderFlat(); };
-$("#metric").onchange = function(e){ metric = e.target.value; flameRoot = null; flamePath = []; renderAll(); };
-$("#root").onchange = function(){ flameRoot = null; flamePath = []; renderTree(); renderFlame(); };
-$("#csvBtn").onclick = exportCsv;
-$("#pClose").onclick = function(){ $("#panel").classList.remove("on"); };
-document.addEventListener("keydown", function(e){ if (e.key === "Escape") $("#panel").classList.remove("on"); });
+$("#flat thead").addEventListener("keydown", function(e){
+  if (e.key !== "Enter" && e.key !== " ") return;
+  var th = e.target.closest("th[data-k]");
+  if (!th) return;
+  e.preventDefault();
+  sortBy(th.dataset.k);
+});
 
-$("#fileInput").onchange = function(e){ loadFile(e.target.files[0]); };
+$("#more").addEventListener("click", function(e){
+  if (!e.target.closest("#moreBtn")) return;
+  rowLimit += 500;
+  invalidate(["flat"]);
+});
+
+/* ---------------- delegated clicks in the other views ---------------- */
+
+function delegateFunc(sel){
+  $(sel).addEventListener("click", function(e){
+    var el = e.target.closest("[data-f]");
+    if (el && $(sel).contains(el)) openFunc(el.dataset.f);
+  });
+}
+delegateFunc("#insight");
+delegateFunc("#pBody");
+delegateFunc("#diff");
+
+$("#tree").addEventListener("click", function(e){
+  var nm = e.target.closest(".nm");
+  if (!nm) return;
+  var row = nm.closest("[data-f]");
+  if (row) openFunc(row.dataset.f);
+});
+
+$("#flame").addEventListener("click", function(e){
+  var el = e.target.closest(".fr");
+  if (!el) return;
+  var n = el.dataset.f;
+  if (e.altKey || e.metaKey || e.ctrlKey){ openFunc(n); return; }
+  if (n === flameCur) return;
+  flamePath.push(flameCur);
+  flameRoot = n;
+  invalidate(["flame"]);
+});
+
+$("#crumb").addEventListener("click", function(e){
+  var b = e.target.closest("button");
+  if (!b) return;
+  var i = +b.dataset.i;
+  if (i < 0){ flameRoot = null; flamePath = []; }
+  else { flameRoot = flameCrumbs[i]; flamePath = flameCrumbs.slice(0, i); }
+  invalidate(["flame"]);
+});
+
+$("#diff").addEventListener("click", function(e){
+  var th = e.target.closest("th[data-dk]");
+  if (!th) return;
+  if (th.dataset.dk === dSortKey) dSortDir = -dSortDir;
+  else { dSortKey = th.dataset.dk; dSortDir = th.dataset.dk === "name" ? 1 : -1; }
+  invalidate(["diff"]);
+});
+
+/* ---------------- toolbar ---------------- */
+
+var qTimer = null;
+$("#q").oninput = function(){
+  clearTimeout(qTimer);              /* a full re-sort per keystroke is too much */
+  qTimer = setTimeout(function(){
+    rowLimit = 250;
+    invalidate(["flat", "diff"]);
+    writeHash();
+  }, 120);
+};
+$("#metric").onchange = function(e){
+  metric = e.target.value;
+  flameRoot = null; flamePath = [];
+  invalidate();
+  writeHash();
+};
+$("#root").onchange = function(){
+  flameRoot = null; flamePath = [];
+  invalidate(["tree", "flame"]);
+  writeHash();
+};
+$("#csvBtn").onclick = exportCsv;
+
+/* ---------------- detail panel ---------------- */
+
+$("#pClose").onclick = closePanel;
+$("#backdrop").onclick = closePanel;
+$("#panel").addEventListener("keydown", function(e){
+  if (e.key !== "Tab") return;
+  var f = $("#panel").querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (!f.length) return;
+  var first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+});
+
+/* ---------------- keyboard shortcuts ---------------- */
+
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape"){
+    if (panelOpen()) closePanel();
+    else if (document.activeElement === $("#q")){ $("#q").value = ""; $("#q").oninput(); }
+    return;
+  }
+  var t = e.target;
+  var typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "/"){ e.preventDefault(); $("#q").focus(); $("#q").select(); return; }
+  if (!M) return;
+  if (e.key === "t"){ toggleTheme(); return; }
+  if (e.key === "c"){ $("#baseInput").click(); return; }
+  if (e.key === "e"){ exportCsv(); return; }
+  var n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 9){
+    var tabs = visibleTabs();
+    if (tabs[n - 1]) selectTab(tabs[n - 1].dataset.view);
+  }
+});
+
+/* ---------------- file input, paste, drag & drop ---------------- */
+
+$("#fileInput").onchange = function(e){ loadFile(e.target.files[0]); e.target.value = ""; };
+$("#baseInput").onchange = function(e){ loadFile(e.target.files[0], true); e.target.value = ""; };
 $("#pickBtn").onclick = function(){ $("#fileInput").click(); };
 $("#openBtn").onclick = function(){ $("#fileInput").click(); };
+$("#baseBtn").onclick = function(){ $("#baseInput").click(); };
+$("#baseClear").onclick = clearBaseline;
 $("#pasteBtn").onclick = function(){
   var ta = $("#pasteArea");
-  ta.style.display = ta.style.display === "block" ? "none" : "block";
-  ta.focus();
+  var show = ta.style.display !== "block";
+  ta.style.display = show ? "block" : "none";
+  if (show) ta.focus();
 };
 $("#pasteArea").onkeydown = function(e){
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") load(e.target.value, "(pasted data)");
 };
 
 var dz = $("#drop");
-["dragenter", "dragover"].forEach(function(ev){
-  document.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.add("hot"); });
-});
-document.addEventListener("dragleave", function(e){ if (e.target === dz) dz.classList.remove("hot"); });
+var dragDepth = 0;
+function dragHot(on){ dz.classList.toggle("hot", on); }
+document.addEventListener("dragenter", function(e){ e.preventDefault(); dragDepth++; dragHot(true); });
+document.addEventListener("dragover", function(e){ e.preventDefault(); });
+/* count enter/leave pairs: matching on e.target left the zone stuck highlighted */
+document.addEventListener("dragleave", function(){ if (--dragDepth <= 0){ dragDepth = 0; dragHot(false); } });
 document.addEventListener("drop", function(e){
   e.preventDefault();
-  dz.classList.remove("hot");
-  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+  dragDepth = 0; dragHot(false);
+  if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+  /* shift-drop loads the file as the diff baseline instead of replacing */
+  loadFile(e.dataTransfer.files[0], e.shiftKey && !!M);
 });
 
-$("#themeBtn").onclick = function(){
+function toggleTheme(){
   var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
   document.documentElement.setAttribute("data-theme", next);
   try { localStorage.setItem("xhprof-theme", next); } catch (e){}
-};
+}
+$("#themeBtn").onclick = toggleTheme;
 try {
   var saved = localStorage.getItem("xhprof-theme");
   if (saved) document.documentElement.setAttribute("data-theme", saved);
@@ -1329,30 +1890,216 @@ try {
     document.documentElement.setAttribute("data-theme", "light");
 } catch (e){}
 
+/* ================================================================== *
+ * 10. Self-tests — open this file with ?selftest=1
+ *
+ * The parsers and the model are the parts that actually break, and they are
+ * pure functions, so they can be asserted without a browser harness.
+ * ================================================================== */
+
+var SELF_TESTS = [
+["unserialize: scalars", function(t){
+  t.eq(phpUnserialize("i:42;"), 42);
+  t.eq(phpUnserialize("i:-7;"), -7);
+  t.eq(phpUnserialize("d:1.5;"), 1.5);
+  t.eq(phpUnserialize("b:1;"), true);
+  t.eq(phpUnserialize("b:0;"), false);
+  t.eq(phpUnserialize("N;"), null);
+  t.ok(isNaN(phpUnserialize("d:NAN;")));
+  t.eq(phpUnserialize("d:INF;"), Infinity);
+  t.eq(phpUnserialize("d:-INF;"), -Infinity);
+}],
+
+["unserialize: string lengths are byte counts", function(t){
+  t.eq(phpUnserialize('s:5:"hello";'), "hello");
+  t.eq(phpUnserialize('s:3:"é1";'), "é1");   /* é is 2 bytes + "1" */
+  t.eq(phpUnserialize('s:4:"😀";'), "😀"); /* 4 bytes, 2 code units */
+  t.eq(phpUnserialize('a:1:{s:2:"é";i:1;}')["é"], 1);
+  /* byteChars mode: the payload was decoded latin-1, one char == one byte */
+  t.eq(phpUnserialize('s:2:"Ã©";', true), "Ã©");
+}],
+
+["unserialize: arrays and objects", function(t){
+  var a = phpUnserialize('a:2:{s:1:"a";i:1;s:1:"b";a:1:{i:0;i:9;}}');
+  t.eq(a.a, 1);
+  t.eq(a.b[0], 9);
+  var o = phpUnserialize('O:3:"Foo":2:{s:6:"\x00Foo\x00p";i:1;s:1:"q";i:2;}');
+  t.eq(o.p, 1);   /* private property mangling stripped */
+  t.eq(o.q, 2);
+}],
+
+["unserialize: a __proto__ key stays a key", function(t){
+  var a = phpUnserialize('a:2:{s:9:"__proto__";i:7;s:11:"constructor";i:8;}');
+  t.eq(a.__proto__, 7);
+  t.eq(a.constructor, 8);
+  t.eq(Object.keys(a).length, 2);
+}],
+
+["unserialize: unsupported types fail clearly", function(t){
+  t.eq(phpUnserialize('E:8:"Suit:Hea";'), "Suit:Hea");
+  t.throws(function(){ phpUnserialize("R:1;"); }, /back-references/);
+  t.throws(function(){ phpUnserialize("r:1;"); }, /back-references/);
+  t.throws(function(){ phpUnserialize('C:3:"Foo":3:{abc}'); }, /custom-serialized/);
+  t.throws(function(){ phpUnserialize("x:1;"); }, /unknown type/);
+  t.throws(function(){ phpUnserialize('s:5:"ab";'); }, /offset/);
+}],
+
+["php array literal parser", function(t){
+  var a = phpLiteralParse("<?php return array('a' => array('ct' => 1, 'wt' => 2,), 'b' => [3, 4],);");
+  t.eq(a.a.ct, 1);
+  t.eq(a.a.wt, 2);
+  t.eq(a.b[0], 3);
+  t.eq(a.b[1], 4);
+  t.eq(phpLiteralParse("array('x' => 'a\\'b')").x, "a'b");
+  t.eq(phpLiteralParse('["n" => -1.5e2]').n, -150);
+  t.eq(phpLiteralParse("[true, false, null]")[0], true);
+  t.eq(phpLiteralParse("[true, false, null]")[1], false);
+  t.eq(phpLiteralParse("[true, false, null]")[2], null);
+  t.eq(phpLiteralParse("['__proto__' => 5]").__proto__, 5);
+  t.throws(function(){ phpLiteralParse("array('a' => "); }, /php literal/);
+}],
+
+["format sniffing", function(t){
+  t.eq(parseProfileText('a:1:{s:6:"main()";a:1:{s:2:"wt";i:5;}}').format, "PHP serialize()");
+  t.eq(parseProfileText('{"main()":{"wt":5}}').format, "JSON");
+  t.eq(parseProfileText("<?php return array('main()' => array('wt' => 5));").format, "PHP array literal");
+  t.eq(parseProfileText("﻿{\"main()\":{\"wt\":5}}").format, "JSON");
+  t.throws(function(){ parseProfileText("   "); }, /Empty/);
+  t.throws(function(){ parseProfileText("nonsense"); }, /Unrecognised/);
+}],
+
+["extractProfile: bare, wrapped, nested", function(t){
+  var bare = { "main()": { wt: 1 } };
+  t.eq(extractProfile(bare).profile, bare);
+  var w = extractProfile({ profile: bare, meta: { url: "/x" } });
+  t.eq(w.profile, bare);
+  t.eq(w.meta.meta.url, "/x");                 /* everything else kept as metadata */
+  var n = extractProfile({ runs: bare });
+  t.eq(n.profile, bare);
+  t.eq(extractProfile({ "a==>b": { ct: 1 } }).profile["a==>b"].ct, 1);
+  t.throws(function(){ extractProfile({ a: 1 }); }, /No XHProf data/);
+  /* a plain object must not be mistaken for a profile via its prototype */
+  t.throws(function(){ extractProfile({ x: { toString: 1 } }); }, /No XHProf data/);
+}],
+
+["buildModel: inclusive, exclusive, roots, totals", function(t){
+  var m = buildModel({
+    "main()":     { ct: 1, wt: 100 },
+    "main()==>a": { ct: 2, wt: 60 },
+    "a==>b":      { ct: 4, wt: 25 }
+  });
+  t.eq(m.metricList.join(","), "wt");
+  t.eq(m.roots.join(","), "main()");
+  t.eq(m.funcs.get("main()").incl.wt, 100);
+  t.eq(m.funcs.get("main()").excl.wt, 40);
+  t.eq(m.funcs.get("a").incl.wt, 60);
+  t.eq(m.funcs.get("a").excl.wt, 35);
+  t.eq(m.funcs.get("b").excl.wt, 25);
+  t.eq(m.funcs.get("b").ct, 4);
+  t.eq(m.totals.wt, 100);
+  t.eq(m.totalCt, 7);
+  t.ok(m.rootSet.has("main()"));
+}],
+
+["buildModel: profile without a main() entry", function(t){
+  var m = buildModel({ "top==>x": { ct: 1, wt: 10 }, "top==>y": { ct: 1, wt: 5 } });
+  t.eq(m.roots.join(","), "top");
+  t.eq(m.funcs.get("top").incl.wt, 15);   /* filled from its callees */
+  t.eq(m.funcs.get("top").excl.wt, 0);
+  t.eq(m.totals.wt, 15);
+}],
+
+["buildModel: metric discovery keeps unknown keys", function(t){
+  var m = buildModel({ "main()": { ct: 1, wt: 10, cpu: 5, mu: 100, weird: 3 } });
+  t.eq(m.metricList.join(","), "wt,cpu,mu,weird");
+  t.eq(unitOf("wt"), "us");
+  t.eq(unitOf("mu"), "bytes");
+  t.eq(unitOf("weird"), "count");
+  t.throws(function(){ buildModel({}); }, /no usable entries/);
+}],
+
+["formatters", function(t){
+  t.eq(fmtUs(999), "999 µs");
+  t.eq(fmtUs(1500), "1.50 ms");
+  t.eq(fmtUs(2500000), "2.500 s");
+  t.eq(fmtBytes(512), "512 B");
+  t.eq(fmtBytes(2048), "2.0 KB");
+  t.eq(fmtBytes(-1048576), "-1.00 MB");
+  t.eq(fmtPct(1, 4), "25.00%");
+  t.eq(fmtPct(1, 0), "0.00%");
+  t.eq(esc('<a href="x">&'), "&lt;a href=&quot;x&quot;&gt;&amp;");
+  t.eq(fmtDelta(-1500, "wt"), "−1.50 ms");
+  t.eq(fmtRatio(Infinity), "new");
+}],
+
+["csv cells", function(t){
+  t.eq(csvCell("a,b"), '"a,b"');
+  t.eq(csvCell("say \"hi\""), "\"say \"\"hi\"\"\"");
+  t.eq(csvCell("=cmd()"), "'=cmd()");        /* no formula injection */
+  t.eq(csvCell("+1"), "'+1");
+  t.eq(csvCell(-5), "-5");
+  t.eq(csvCell("plain"), "plain");
+}]
+];
+
+function runSelfTests(){
+  var rows = [], pass = 0, fail = 0;
+  SELF_TESTS.forEach(function(pair){
+    var errs = [];
+    var t = {
+      eq: function(a, b){
+        if (a !== b) errs.push("expected " + JSON.stringify(b) + ", got " + JSON.stringify(a));
+      },
+      ok: function(v){ if (!v) errs.push("expected a truthy value"); },
+      throws: function(fn, re){
+        try { fn(); errs.push("expected a throw matching " + re); }
+        catch (e){ if (!re.test(e.message)) errs.push("threw \"" + e.message + '", expected ' + re); }
+      }
+    };
+    try { pair[1](t); } catch (e){ errs.push("threw " + e.message); }
+    if (errs.length) fail++; else pass++;
+    rows.push({ ok: !errs.length, name: pair[0], why: errs.join(" · ") });
+  });
+  return { pass: pass, fail: fail, rows: rows };
+}
+
+function showSelfTests(){
+  var r = runSelfTests();
+  $("#dropErr").innerHTML = '<div class="st">' + r.rows.map(function(x){
+    return "<div><span class=\"" + (x.ok ? "ok" : "ko") + '">' + (x.ok ? "PASS" : "FAIL")
+      + "</span> " + esc(x.name) + (x.ok ? "" : " — " + esc(x.why)) + "</div>";
+  }).join("") + '</div><div class="st-sum ' + (r.fail ? "ko" : "ok") + '">'
+    + r.pass + " passed, " + r.fail + " failed</div>";
+  return r;
+}
+
 /* ---------------- demo profile ---------------- */
 
-$("#demoBtn").onclick = function(){
-  var p = {
-    "main()":                                  { ct: 1,    wt: 412500, cpu: 380000, mu: 2100000, pmu: 2600000 },
-    "main()==>bootstrap":                      { ct: 1,    wt: 61000,  cpu: 58000,  mu: 900000,  pmu: 1200000 },
-    "bootstrap==>Composer\\Autoload::load":    { ct: 212,  wt: 38000,  cpu: 36000,  mu: 640000,  pmu: 800000 },
-    "bootstrap==>config_load":                 { ct: 1,    wt: 12000,  cpu: 11000,  mu: 120000,  pmu: 150000 },
-    "config_load==>file_get_contents":         { ct: 6,    wt: 8200,   cpu: 2000,   mu: 40000,   pmu: 60000 },
-    "main()==>Router::dispatch":               { ct: 1,    wt: 330000, cpu: 300000, mu: 1100000, pmu: 1300000 },
-    "Router::dispatch==>Controller::index":    { ct: 1,    wt: 322000, cpu: 292000, mu: 1050000, pmu: 1250000 },
-    "Controller::index==>Repository::findAll": { ct: 3,    wt: 210000, cpu: 60000,  mu: 700000,  pmu: 820000 },
-    "Repository::findAll==>PDO::query":        { ct: 12,   wt: 180000, cpu: 22000,  mu: 410000,  pmu: 500000 },
-    "PDO::query==>PDOStatement::fetchAll":     { ct: 12,   wt: 41000,  cpu: 18000,  mu: 300000,  pmu: 380000 },
-    "Repository::findAll==>Hydrator::hydrate": { ct: 900,  wt: 24000,  cpu: 23500,  mu: 250000,  pmu: 300000 },
-    "Hydrator::hydrate==>array_map":           { ct: 900,  wt: 9000,   cpu: 8800,   mu: 90000,   pmu: 110000 },
-    "Controller::index==>Twig::render":        { ct: 1,    wt: 98000,  cpu: 96000,  mu: 320000,  pmu: 400000 },
-    "Twig::render==>Twig::loadTemplate":       { ct: 14,   wt: 26000,  cpu: 25500,  mu: 120000,  pmu: 150000 },
-    "Twig::render==>htmlspecialchars":         { ct: 4200, wt: 16000,  cpu: 15800,  mu: 20000,   pmu: 30000 },
-    "Twig::render==>Twig::render":             { ct: 9,    wt: 31000,  cpu: 30500,  mu: 100000,  pmu: 120000 },
-    "main()==>register_shutdown":              { ct: 1,    wt: 900,    cpu: 800,    mu: 5000,    pmu: 6000 }
-  };
-  load(JSON.stringify(p), "demo-profile.json");
+/* The demo profile is a named constant so docs/screenshots.js can derive a
+   baseline from it and keep the documentation reproducible. */
+var DEMO_PROFILE = {
+  "main()":                                  { ct: 1,    wt: 412500, cpu: 380000, mu: 2100000, pmu: 2600000 },
+  "main()==>bootstrap":                      { ct: 1,    wt: 61000,  cpu: 58000,  mu: 900000,  pmu: 1200000 },
+  "bootstrap==>Composer\\Autoload::load":    { ct: 212,  wt: 38000,  cpu: 36000,  mu: 640000,  pmu: 800000 },
+  "bootstrap==>config_load":                 { ct: 1,    wt: 12000,  cpu: 11000,  mu: 120000,  pmu: 150000 },
+  "config_load==>file_get_contents":         { ct: 6,    wt: 8200,   cpu: 2000,   mu: 40000,   pmu: 60000 },
+  "main()==>Router::dispatch":               { ct: 1,    wt: 330000, cpu: 300000, mu: 1100000, pmu: 1300000 },
+  "Router::dispatch==>Controller::index":    { ct: 1,    wt: 322000, cpu: 292000, mu: 1050000, pmu: 1250000 },
+  "Controller::index==>Repository::findAll": { ct: 3,    wt: 210000, cpu: 60000,  mu: 700000,  pmu: 820000 },
+  "Repository::findAll==>PDO::query":        { ct: 12,   wt: 180000, cpu: 22000,  mu: 410000,  pmu: 500000 },
+  "PDO::query==>PDOStatement::fetchAll":     { ct: 12,   wt: 41000,  cpu: 18000,  mu: 300000,  pmu: 380000 },
+  "Repository::findAll==>Hydrator::hydrate": { ct: 900,  wt: 24000,  cpu: 23500,  mu: 250000,  pmu: 300000 },
+  "Hydrator::hydrate==>array_map":           { ct: 900,  wt: 9000,   cpu: 8800,   mu: 90000,   pmu: 110000 },
+  "Controller::index==>Twig::render":        { ct: 1,    wt: 98000,  cpu: 96000,  mu: 320000,  pmu: 400000 },
+  "Twig::render==>Twig::loadTemplate":       { ct: 14,   wt: 26000,  cpu: 25500,  mu: 120000,  pmu: 150000 },
+  "Twig::render==>htmlspecialchars":         { ct: 4200, wt: 16000,  cpu: 15800,  mu: 20000,   pmu: 30000 },
+  "Twig::render==>Twig::render":             { ct: 9,    wt: 31000,  cpu: 30500,  mu: 100000,  pmu: 120000 },
+  "main()==>register_shutdown":              { ct: 1,    wt: 900,    cpu: 800,    mu: 5000,    pmu: 6000 }
 };
+
+$("#demoBtn").onclick = function(){ load(JSON.stringify(DEMO_PROFILE), "demo-profile.json"); };
+
+if (/(^|[?&])selftest(=1)?(&|$)/.test(location.search)) showSelfTests();
 </script>
 </body>
 </html>
